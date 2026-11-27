@@ -1,5 +1,7 @@
 package id.neotica.minidroid
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
@@ -11,6 +13,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import kotlin.concurrent.thread
@@ -176,6 +179,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showPowerMenu() {
         val items = arrayOf(
+            "Logcat (AndroidRuntime)",
             "Power Button (Wake / Sleep)",
             "Guest Volume Up",
             "Guest Volume Down",
@@ -189,17 +193,18 @@ class MainActivity : AppCompatActivity() {
             .setTitle("MiniDroid 1.6 Controls")
             .setItems(items) { _, which ->
                 when (which) {
-                    0 -> vncClient?.tapKey(0xFFC4) // F7 -> KEY_POWER
-                    1 -> vncClient?.tapKey(0xFFC6) // F9 -> KEY_VOLUMEUP
-                    2 -> vncClient?.tapKey(0xFFC5) // F8 -> KEY_VOLUMEDOWN
-                    3 -> vncClient?.tapKey(0xFFC3) // F6 -> KEY_CAMERA
-                    4 -> {
+                    0 -> showLogcatDialog()
+                    1 -> vncClient?.tapKey(0xFFC4) // F7 -> KEY_POWER
+                    2 -> vncClient?.tapKey(0xFFC6) // F9 -> KEY_VOLUMEUP
+                    3 -> vncClient?.tapKey(0xFFC5) // F8 -> KEY_VOLUMEDOWN
+                    4 -> vncClient?.tapKey(0xFFC3) // F6 -> KEY_CAMERA
+                    5 -> {
                         disconnectVnc()
                         EmulatorService.restartVm(this)
                     }
-                    5 -> showLogsDialog()
-                    6 -> confirmFactoryReset()
-                    7 -> {
+                    6 -> showLogsDialog()
+                    7 -> confirmFactoryReset()
+                    8 -> {
                         disconnectVnc()
                         EmulatorService.stopVm(this)
                         finish()
@@ -226,21 +231,143 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun showLogcatDialog() {
+        val adb = AdbClient()
+        var currentCmd = "logcat -d -s AndroidRuntime"
+        var currentLabel = "AndroidRuntime"
+        var lastOutput = ""
+
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(20, 16, 20, 8)
+        }
+
+        val btnRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 0, 0, 12)
+        }
+
+        val tv = TextView(this).apply {
+            text = "Running adb $currentCmd..."
+            textSize = 11f
+            typeface = Typeface.MONOSPACE
+            setTextIsSelectable(true)
+            setPadding(12, 12, 12, 12)
+            setBackgroundColor(Color.parseColor("#121417"))
+            setTextColor(Color.parseColor("#E6EDF3"))
+        }
+        val scroll = ScrollView(this).apply {
+            addView(tv)
+        }
+
+        fun fetchLog(cmd: String, label: String) {
+            currentCmd = cmd
+            currentLabel = label
+            tv.text = "Running $cmd..."
+            thread(name = "AdbLogcat", isDaemon = true) {
+                val output = try {
+                    val raw = adb.shell(cmd, timeoutMs = 15_000).trim()
+                    if (raw.isEmpty()) "(no $label entries yet)" else raw.takeLast(20_000)
+                } catch (e: Exception) {
+                    "ADB not ready or failed: ${e.message}"
+                }
+                lastOutput = output
+                runOnUiThread {
+                    tv.text = output
+                    scroll.post { scroll.fullScroll(ScrollView.FOCUS_DOWN) }
+                }
+            }
+        }
+
+        fun smallBtn(label: String, bg: String, onClick: () -> Unit) = Button(this).apply {
+            text = label
+            isAllCaps = false
+            textSize = 11f
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.parseColor(bg))
+            setPadding(12, 8, 12, 8)
+            minWidth = 0
+            minimumWidth = 0
+            minHeight = 0
+            minimumHeight = 0
+            setOnClickListener { onClick() }
+        }
+
+        val lp = {
+            LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginEnd = 6
+            }
+        }
+        btnRow.addView(smallBtn("Runtime", "#4E7A28") {
+            fetchLog("logcat -d -s AndroidRuntime", "AndroidRuntime")
+        }, lp())
+        btnRow.addView(smallBtn("Errors", "#8D3B2F") {
+            fetchLog("logcat -d *:E", "Errors (*:E)")
+        }, lp())
+        btnRow.addView(smallBtn("All", "#2B313B") {
+            fetchLog("logcat -d", "All")
+        }, lp())
+        btnRow.addView(smallBtn("Clear", "#2B313B") {
+            thread(name = "AdbLogcatClear", isDaemon = true) {
+                try {
+                    adb.shell("logcat -c", timeoutMs = 10_000)
+                } catch (_: Exception) {
+                }
+                runOnUiThread { fetchLog(currentCmd, currentLabel) }
+            }
+        }, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+
+        container.addView(btnRow)
+        container.addView(
+            scroll,
+            LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, (resources.displayMetrics.heightPixels * 0.55f).toInt())
+        )
+
+        AlertDialog.Builder(this)
+            .setTitle("Logcat — Android 1.6")
+            .setView(container)
+            .setNeutralButton("Copy") { _, _ ->
+                copyToClipboard("MiniDroid Logcat", lastOutput.ifEmpty { tv.text.toString() })
+            }
+            .setNegativeButton("Refresh", null)
+            .setPositiveButton("Close", null)
+            .show()
+            .also { dialog ->
+                // Keep dialog open when tapping Refresh
+                dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.setOnClickListener {
+                    fetchLog(currentCmd, currentLabel)
+                }
+            }
+
+        fetchLog(currentCmd, currentLabel)
+    }
+
+    private fun copyToClipboard(label: String, text: String) {
+        val cm = getSystemService(ClipboardManager::class.java)
+        cm?.setPrimaryClip(ClipData.newPlainText(label, text))
+        Toast.makeText(this, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+    }
+
     private fun showLogsDialog() {
         val bootLog = ImageInstaller.bootLogFile(this).takeIf { it.exists() }?.readText()?.takeLast(4000)
             ?: "(no kernel log yet)"
         val qemuLog = java.io.File(filesDir, "qemu.log").takeIf { it.exists() }?.readText()?.takeLast(1500)
             ?: ""
+        val combined = "=== QEMU ===\n$qemuLog\n\n=== KERNEL / SERIAL ===\n$bootLog"
         val tv = TextView(this).apply {
-            text = "=== QEMU ===\n$qemuLog\n\n=== KERNEL / SERIAL ===\n$bootLog"
+            text = combined
             textSize = 11f
             typeface = Typeface.MONOSPACE
+            setTextIsSelectable(true)
             setPadding(24, 20, 24, 20)
         }
         val scroll = ScrollView(this).apply { addView(tv) }
         AlertDialog.Builder(this)
             .setTitle("MiniDroid Logs")
             .setView(scroll)
+            .setNeutralButton("Copy") { _, _ ->
+                copyToClipboard("MiniDroid Boot Logs", combined)
+            }
             .setPositiveButton("Close", null)
             .show()
     }
