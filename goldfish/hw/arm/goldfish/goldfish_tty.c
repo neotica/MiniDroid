@@ -106,6 +106,9 @@ static void goldfish_tty_write(void *opaque, hwaddr offset,
                             s->data_count - to_read);
                 }
                 s->data_count -= to_read;
+                if (s->has_chr) {
+                    qemu_chr_fe_accept_input(&s->chr);
+                }
             }
             if (s->data_count == 0 && s->ready) {
                 goldfish_device_set_irq(s->bus, &s->dev, 0, 0);

@@ -207,6 +207,7 @@ if [ ! -f "$PREFIX/lib/libslirp.a" ]; then
     tar -xf "$TAR/libslirp-v4.9.0.tar.bz2" -C "$WORK"
     (
         cd "$WORK/libslirp-v4.9.0"
+        patch -p1 < "$ROOT/goldfish/libslirp-4.9.0-android-dns.patch"
         meson setup build \
             --cross-file "$CROSS" \
             --prefix="$PREFIX" \

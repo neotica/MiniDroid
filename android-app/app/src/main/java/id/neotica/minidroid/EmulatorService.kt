@@ -8,9 +8,13 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.ConnectivityManager
+import android.net.LinkProperties
+import android.net.Network
 import android.os.Build
 import android.os.IBinder
 import java.io.File
+import java.net.Inet4Address
 import kotlin.concurrent.thread
 
 class EmulatorService : Service() {
@@ -18,6 +22,7 @@ class EmulatorService : Service() {
     companion object {
         const val VNC_PORT = 5901
         const val ADB_PORT = 15555
+        const val MODEM_PORT = 15556
 
         const val ACTION_START = "id.neotica.minidroid.START"
         const val ACTION_STOP = "id.neotica.minidroid.STOP"
@@ -87,6 +92,8 @@ class EmulatorService : Service() {
 
     private var qemuProcess: Process? = null
     private var httpServer: SharedHttpServer? = null
+    private var modemServer: VirtualModemServer? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private val procLock = Any()
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -158,6 +165,14 @@ class EmulatorService : Service() {
                 append(",width=320,height=480")
             }
 
+            val resolvFile = File(filesDir, "resolv.conf")
+            writeHostResolvConf(resolvFile, null)
+            registerHostDnsSync(resolvFile)
+
+            if (modemServer == null) {
+                modemServer = VirtualModemServer(MODEM_PORT).apply { start() }
+            }
+
             val cmd = listOf(
                 qemuBin.absolutePath,
                 "-L", filesDir.absolutePath,
@@ -165,9 +180,10 @@ class EmulatorService : Service() {
                 "-m", "128M",
                 "-kernel", ImageInstaller.kernelFile(this).absolutePath,
                 "-initrd", ImageInstaller.ramdiskFile(this).absolutePath,
-                "-append", "qemu=1 console=ttyS0 android.checkjni=1 android.ndns=1",
+                "-append", "qemu=1 console=ttyS0 android.checkjni=1 android.ndns=1 android.ril=ttyS1",
                 "-nic", "user,model=smc91c111,hostfwd=tcp:127.0.0.1:$ADB_PORT-:5555",
                 "-serial", "file:${bootLog.absolutePath}",
+                "-serial", "tcp:127.0.0.1:$MODEM_PORT",
                 "-vnc", "127.0.0.1:1",
                 "-display", "none"
             )
@@ -175,6 +191,7 @@ class EmulatorService : Service() {
             val pb = ProcessBuilder(cmd)
             pb.directory(filesDir)
             pb.environment()["TMPDIR"] = cacheDir.absolutePath
+            pb.environment()["SLIRP_RESOLV_CONF"] = resolvFile.absolutePath
             pb.redirectErrorStream(true)
 
             if (httpServer == null) {
@@ -226,6 +243,9 @@ class EmulatorService : Service() {
     }
 
     private fun stopQemuProcess() {
+        unregisterHostDnsSync()
+        modemServer?.stop()
+        modemServer = null
         httpServer?.stop()
         httpServer = null
         synchronized(procLock) {
@@ -242,6 +262,62 @@ class EmulatorService : Service() {
             }
         }
         updateState("Stopped", false)
+    }
+
+    private fun writeHostResolvConf(resolvFile: File, linkProps: LinkProperties?) {
+        try {
+            val cm = getSystemService(ConnectivityManager::class.java)
+            val props = linkProps ?: cm?.activeNetwork?.let { cm.getLinkProperties(it) }
+            val ipv4Dns = props?.dnsServers
+                ?.filterIsInstance<Inet4Address>()
+                ?.mapNotNull { it.hostAddress }
+                ?.filter { it.isNotBlank() && !it.startsWith("127.") }
+                ?: emptyList()
+
+            val servers = LinkedHashSet<String>()
+            servers.addAll(ipv4Dns)
+            // Always keep public fallbacks in case the host network is IPv6-only or offline at boot
+            servers.add("8.8.8.8")
+            servers.add("1.1.1.1")
+
+            val content = servers.joinToString(separator = "\n", postfix = "\n") { "nameserver $it" }
+            val tmp = File(resolvFile.parentFile, "${resolvFile.name}.tmp")
+            tmp.writeText(content)
+            if (!tmp.renameTo(resolvFile)) {
+                resolvFile.writeText(content)
+                tmp.delete()
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun registerHostDnsSync(resolvFile: File) {
+        unregisterHostDnsSync()
+        try {
+            val cm = getSystemService(ConnectivityManager::class.java) ?: return
+            val cb = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    writeHostResolvConf(resolvFile, cm.getLinkProperties(network))
+                }
+
+                override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
+                    writeHostResolvConf(resolvFile, linkProperties)
+                }
+            }
+            cm.registerDefaultNetworkCallback(cb)
+            networkCallback = cb
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun unregisterHostDnsSync() {
+        val cb = networkCallback ?: return
+        networkCallback = null
+        try {
+            val cm = getSystemService(ConnectivityManager::class.java)
+            cm?.unregisterNetworkCallback(cb)
+        } catch (_: Exception) {
+        }
     }
 
     private fun ensureNotificationChannel() {

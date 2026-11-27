@@ -1,0 +1,76 @@
+--- a/src/slirp.c
++++ b/src/slirp.c
+@@ -364,7 +364,14 @@
+ 
+ #else // !defined(_WIN32) && !defined(__APPLE__)
+ 
+-#if defined(__HAIKU__)
++#if defined(__ANDROID__)
++static const char *android_resolv_conf_path(void)
++{
++    const char *env = getenv("SLIRP_RESOLV_CONF");
++    return (env && env[0]) ? env : "/etc/resolv.conf";
++}
++#define RESOLV_CONF_PATH android_resolv_conf_path()
++#elif defined(__HAIKU__)
+ #define RESOLV_CONF_PATH "/boot/system/settings/network/resolv.conf"
+ #else
+ #define RESOLV_CONF_PATH "/etc/resolv.conf"
+@@ -381,7 +388,11 @@
+     }
+     old_stat = *cached_stat;
+     if (stat(RESOLV_CONF_PATH, cached_stat) != 0) {
++#if defined(__ANDROID__)
++        return 1;
++#else
+         return -1;
++#endif
+     }
+     if (cached_stat->st_dev == old_stat.st_dev &&
+         cached_stat->st_ino == old_stat.st_ino &&
+@@ -448,8 +459,19 @@
+     unsigned nameservers = 0;
+ 
+     f = fopen(RESOLV_CONF_PATH, "r");
+-    if (!f)
++    if (!f) {
++#if defined(__ANDROID__)
++        found += try_and_setdns_server(af, found, 0, "8.8.8.8",
++                        pdns_addr, cached_addr, addrlen, scope_id,
++                        cached_scope_id, cached_time);
++        found += try_and_setdns_server(af, found, 0, "1.1.1.1",
++                        pdns_addr, cached_addr, addrlen, scope_id,
++                        cached_scope_id, cached_time);
++        return found ? 0 : -1;
++#else
+         return -1;
++#endif
++    }
+ 
+     DEBUG_MISC("IP address of your DNS(s):");
+     while (fgets(buff, 512, f) != NULL) {
+@@ -474,6 +496,16 @@
+         }
+     }
+     fclose(f);
++#if defined(__ANDROID__)
++    if (!found) {
++        found += try_and_setdns_server(af, found, 0, "8.8.8.8",
++                        pdns_addr, cached_addr, addrlen, scope_id,
++                        cached_scope_id, cached_time);
++        found += try_and_setdns_server(af, found, 0, "1.1.1.1",
++                        pdns_addr, cached_addr, addrlen, scope_id,
++                        cached_scope_id, cached_time);
++    }
++#else
+     if (nameservers && !found)
+         return -1;
+     if (!nameservers) {
+@@ -484,6 +516,7 @@
+ 			pdns_addr, cached_addr, addrlen, scope_id,
+ 			cached_scope_id, cached_time);
+     }
++#endif
+ 
+     return found ? 0 : -1;
+ }

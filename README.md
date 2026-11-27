@@ -21,6 +21,9 @@ Port of the classic **Android 1.6 (Donut) ARM Goldfish** virtual platform onto m
 - **MiniDroid Android App (`android-app/`):**
   - Runs `libqemu.so` in a foreground service (`useLegacyPackaging = true` for Android 10+ W^X compatibility).
   - Pure-Kotlin RFB 3.8 VNC client (`VncClient.kt` + `EmulatorView.kt`) for crisp 320×480 display, 1:1 touch input, soft keyboard bridge, and classic Android 1.6 hardware buttons (**Back / Home / Menu / Search / Keyboard**).
+  - **Live Internet Bridge (`VirtualModemServer.kt` + Android `libslirp` DNS patch):**
+    - Emulates Android 1.6's GSM/3G AT modem on `/dev/ttyS1` (`android.ril=ttyS1`) so Donut shows **3G Mobile Data CONNECTED** and syncs system time/timezone automatically (`%CTZV`).
+    - Dynamically syncs the host phone's active Wi-Fi or Mobile Data DNS servers into `<filesDir>/resolv.conf` (`SLIRP_RESOLV_CONF`, with `8.8.8.8`/`1.1.1.1` fallback) so all guest traffic rides directly over your phone's real internet connection.
   - **Live Shared Storage & APK Manager (`SharedStorageActivity.kt`, `AdbClient.kt`, `SharedHttpServer.kt`):**
     - Pick any shared folder on your modern phone via Storage Access Framework (or use the default `Shared/` folder).
     - **One-tap Import & Install APK:** copies into your shared folder, pushes to Android 1.6 `/sdcard/Shared/` via local ADB (`127.0.0.1:15555`), and installs live via `pm install -r`.
