@@ -1,4 +1,4 @@
-package com.laetuz.minidroid
+package id.neotica.minidroid
 
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
@@ -196,6 +196,7 @@ class VncClient(
         }
 
         onConnected(w, h)
+        sock.soTimeout = 0 // Do not time out while screen is idle between frames
         requestUpdate(incremental = false, w = w, h = h)
 
         while (running) {

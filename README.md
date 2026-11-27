@@ -1,6 +1,6 @@
 # MiniDroid — Android 1.6 (Donut) ARM Emulator App
 
-Port of the classic **Android 1.6 (Donut) ARM Goldfish** virtual platform onto modern **QEMU 11.1.3** (`arm-softmmu` + `aarch64` TCG JIT), packaged as a self-contained Android app (`com.laetuz.minidroid`) with live shared storage for moving and installing `.apk` files.
+Port of the classic **Android 1.6 (Donut) ARM Goldfish** virtual platform onto modern **QEMU 11.1.3** (`arm-softmmu` + `aarch64` TCG JIT), packaged as a self-contained Android app (`id.neotica.minidroid`) with live shared storage for moving and installing `.apk` files.
 
 ![Android 1.6 Home Screen running on QEMU 11.1.3 Goldfish](docs/home-unlocked.png)
 

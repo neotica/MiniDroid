@@ -1,4 +1,4 @@
-package com.laetuz.minidroid
+package id.neotica.minidroid
 
 import android.content.Intent
 import android.graphics.Color

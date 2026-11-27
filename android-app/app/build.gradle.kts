@@ -4,15 +4,15 @@ plugins {
 }
 
 android {
-    namespace = "com.laetuz.minidroid"
+    namespace = "id.neotica.minidroid"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.laetuz.minidroid"
+        applicationId = "id.neotica.minidroid"
         minSdk = 28
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "0.1.1"
 
         ndk {
             abiFilters += listOf("arm64-v8a")

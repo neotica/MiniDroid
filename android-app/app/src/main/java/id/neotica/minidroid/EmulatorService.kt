@@ -1,4 +1,4 @@
-package com.laetuz.minidroid
+package id.neotica.minidroid
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import java.io.File
@@ -18,9 +19,9 @@ class EmulatorService : Service() {
         const val VNC_PORT = 5901
         const val ADB_PORT = 15555
 
-        const val ACTION_START = "com.laetuz.minidroid.START"
-        const val ACTION_STOP = "com.laetuz.minidroid.STOP"
-        const val ACTION_RESTART = "com.laetuz.minidroid.RESTART"
+        const val ACTION_START = "id.neotica.minidroid.START"
+        const val ACTION_STOP = "id.neotica.minidroid.STOP"
+        const val ACTION_RESTART = "id.neotica.minidroid.RESTART"
 
         private const val CHANNEL_ID = "minidroid_vm"
         private const val NOTIF_ID = 1001
@@ -104,14 +105,14 @@ class EmulatorService : Service() {
                 return START_NOT_STICKY
             }
             ACTION_RESTART -> {
-                startForeground(NOTIF_ID, buildNotification("Restarting Android 1.6..."))
+                beginForeground("Restarting Android 1.6...")
                 thread(name = "MiniDroidRestart") {
                     stopQemuProcess()
                     launchQemu()
                 }
             }
             else -> {
-                startForeground(NOTIF_ID, buildNotification("Starting Android 1.6..."))
+                beginForeground("Starting Android 1.6...")
                 synchronized(procLock) {
                     if (qemuProcess?.isAlive == true) {
                         return START_STICKY
@@ -159,6 +160,7 @@ class EmulatorService : Service() {
 
             val cmd = listOf(
                 qemuBin.absolutePath,
+                "-L", filesDir.absolutePath,
                 "-M", machineArg,
                 "-m", "128M",
                 "-kernel", ImageInstaller.kernelFile(this).absolutePath,
@@ -187,7 +189,7 @@ class EmulatorService : Service() {
 
             // Capture QEMU stderr/stdout into a log file for easy debugging
             val qemuLog = File(filesDir, "qemu.log")
-            thread(name = "QemuLogReader", isDaemon = true) {
+            val logThread = thread(name = "QemuLogReader", isDaemon = true) {
                 try {
                     proc.inputStream.use { input ->
                         qemuLog.outputStream().use { out ->
@@ -199,6 +201,10 @@ class EmulatorService : Service() {
             }
 
             val exitCode = proc.waitFor()
+            try {
+                logThread.join(1000)
+            } catch (_: InterruptedException) {
+            }
             synchronized(procLock) {
                 if (qemuProcess === proc) {
                     qemuProcess = null
@@ -247,6 +253,15 @@ class EmulatorService : Service() {
                 NotificationManager.IMPORTANCE_LOW
             )
             nm.createNotificationChannel(ch)
+        }
+    }
+
+    private fun beginForeground(text: String) {
+        val notif = buildNotification(text)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(NOTIF_ID, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        } else {
+            startForeground(NOTIF_ID, notif)
         }
     }
 

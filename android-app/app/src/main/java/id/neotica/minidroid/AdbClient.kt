@@ -1,4 +1,4 @@
-package com.laetuz.minidroid
+package id.neotica.minidroid
 
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream

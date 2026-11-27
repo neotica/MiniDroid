@@ -1,4 +1,4 @@
-package com.laetuz.minidroid
+package id.neotica.minidroid
 
 import android.content.Context
 import java.io.File
@@ -7,8 +7,10 @@ import java.util.zip.GZIPInputStream
 
 object ImageInstaller {
     private const val ASSET_DIR = "images"
+    private const val KEYMAP_DIR = "keymaps"
 
     fun imagesDir(context: Context): File = File(context.filesDir, "images").apply { mkdirs() }
+    fun keymapsDir(context: Context): File = File(context.filesDir, "keymaps").apply { mkdirs() }
 
     fun defaultSharedDir(context: Context): File {
         val base = context.getExternalFilesDir(null) ?: context.filesDir
@@ -21,12 +23,17 @@ object ImageInstaller {
     fun userdataFile(context: Context) = File(imagesDir(context), "userdata.img")
     fun cacheFile(context: Context) = File(imagesDir(context), "cache.img")
     fun sdcardFile(context: Context) = File(imagesDir(context), "sdcard.img")
+    fun enUsKeymapFile(context: Context) = File(keymapsDir(context), "en-us")
     fun bootLogFile(context: Context) = File(context.filesDir, "boot.log")
 
     fun ensureImagesExtracted(context: Context, onProgress: (String) -> Unit) {
         val dir = imagesDir(context)
         dir.mkdirs()
+        keymapsDir(context)
 
+        copyAssetIfMissing(context, "$KEYMAP_DIR/en-us", enUsKeymapFile(context)) {
+            onProgress("Extracting QEMU keymap...")
+        }
         copyAssetIfMissing(context, "$ASSET_DIR/kernel-qemu", kernelFile(context)) {
             onProgress("Extracting Linux 2.6.29 kernel...")
         }

@@ -1,4 +1,4 @@
-package com.laetuz.minidroid
+package id.neotica.minidroid
 
 import android.content.Context
 import android.graphics.Bitmap
