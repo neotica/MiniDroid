@@ -50,8 +50,8 @@ class AdbClient(
         }
     }
 
-    fun shell(command: String): String {
-        return withConnection(timeoutMs = 30_000) { input, output, _ ->
+    fun shell(command: String, timeoutMs: Int = 30_000): String {
+        return withConnection(timeoutMs = timeoutMs) { input, output, _ ->
             val localId = 1
             val remoteId = openStream(input, output, localId, "shell:$command")
             val result = ByteArrayOutputStream()
@@ -73,7 +73,7 @@ class AdbClient(
     }
 
     fun pushStream(src: InputStream, remotePath: String, modeOctal: Int = 0b110_100_100 /* 0644 */) {
-        withConnection(timeoutMs = 60_000) { input, output, maxPayload ->
+        withConnection(timeoutMs = 120_000) { input, output, maxPayload ->
             val localId = 1
             val remoteId = openStream(input, output, localId, "sync:")
             val stream = SyncStream(input, output, localId, remoteId, maxPayload)

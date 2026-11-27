@@ -9,6 +9,7 @@ import java.io.FileInputStream
 import java.io.InputStreamReader
 import java.io.OutputStream
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
@@ -39,7 +40,10 @@ class SharedHttpServer(
         running = true
         thread(name = "SharedHttpServer", isDaemon = true) {
             try {
-                val ss = ServerSocket(port, 16, InetAddress.getByName("127.0.0.1"))
+                val ss = ServerSocket().apply {
+                    reuseAddress = true
+                    bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), port), 16)
+                }
                 serverSocket = ss
                 while (running) {
                     val client = ss.accept()
@@ -74,22 +78,33 @@ class SharedHttpServer(
             s.soTimeout = 10_000
             val reader = BufferedReader(InputStreamReader(s.getInputStream()))
             val reqLine = reader.readLine() ?: return
+            // Drain all HTTP request headers before responding so closing the socket never sends TCP RST
+            while (true) {
+                val headerLine = reader.readLine()
+                if (headerLine.isNullOrEmpty()) break
+            }
             val parts = reqLine.split(" ")
             if (parts.size < 2) return
+            val method = parts[0].uppercase()
+            val headOnly = method == "HEAD"
             val rawPath = parts[1].substringBefore("?")
             val path = URLDecoder.decode(rawPath, "UTF-8")
             val out = s.getOutputStream()
 
             if (path == "/" || path.isEmpty()) {
-                serveIndex(out)
+                serveIndex(out, headOnly)
             } else {
                 val name = path.trimStart('/')
-                serveFile(out, name)
+                serveFile(out, name, headOnly)
+            }
+            try {
+                s.shutdownOutput()
+            } catch (_: Exception) {
             }
         }
     }
 
-    private fun serveIndex(out: OutputStream) {
+    private fun serveIndex(out: OutputStream, headOnly: Boolean) {
         val sb = StringBuilder()
         sb.append("<html><head><title>MiniDroid Shared Folder</title>")
         sb.append("<meta name='viewport' content='width=device-width,initial-scale=1'>")
@@ -129,13 +144,15 @@ class SharedHttpServer(
         val body = sb.toString().toByteArray(Charsets.UTF_8)
         val hdr = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n"
         out.write(hdr.toByteArray(Charsets.US_ASCII))
-        out.write(body)
+        if (!headOnly) {
+            out.write(body)
+        }
         out.flush()
     }
 
-    private fun serveFile(out: OutputStream, name: String) {
+    private fun serveFile(out: OutputStream, name: String, headOnly: Boolean) {
         if (name.contains("..") || name.contains("/")) {
-            send404(out)
+            send404(out, headOnly)
             return
         }
         val mime = if (name.endsWith(".apk", ignoreCase = true)) {
@@ -151,7 +168,9 @@ class SharedHttpServer(
                 val len = doc.length()
                 val hdr = "HTTP/1.1 200 OK\r\nContent-Type: $mime\r\nContent-Length: $len\r\nContent-Disposition: attachment; filename=\"$name\"\r\nConnection: close\r\n\r\n"
                 out.write(hdr.toByteArray(Charsets.US_ASCII))
-                context.contentResolver.openInputStream(doc.uri)?.use { it.copyTo(out) }
+                if (!headOnly) {
+                    context.contentResolver.openInputStream(doc.uri)?.use { it.copyTo(out) }
+                }
                 out.flush()
                 return
             }
@@ -161,19 +180,23 @@ class SharedHttpServer(
         if (f.exists() && f.isFile) {
             val hdr = "HTTP/1.1 200 OK\r\nContent-Type: $mime\r\nContent-Length: ${f.length()}\r\nContent-Disposition: attachment; filename=\"$name\"\r\nConnection: close\r\n\r\n"
             out.write(hdr.toByteArray(Charsets.US_ASCII))
-            FileInputStream(f).use { it.copyTo(out) }
+            if (!headOnly) {
+                FileInputStream(f).use { it.copyTo(out) }
+            }
             out.flush()
             return
         }
 
-        send404(out)
+        send404(out, headOnly)
     }
 
-    private fun send404(out: OutputStream) {
+    private fun send404(out: OutputStream, headOnly: Boolean) {
         val body = "Not found".toByteArray(Charsets.UTF_8)
         val hdr = "HTTP/1.1 404 Not Found\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n"
         out.write(hdr.toByteArray(Charsets.US_ASCII))
-        out.write(body)
+        if (!headOnly) {
+            out.write(body)
+        }
         out.flush()
     }
 }

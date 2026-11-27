@@ -135,12 +135,21 @@ class SharedStorageActivity : AppCompatActivity() {
         content.addView(guestListContainer)
 
         val browserHint = TextView(this).apply {
-            text = "Tip: You can also open Android 1.6 Browser and visit http://10.0.2.2:${SharedHttpServer.PORT}/ to browse & download files directly from your shared folder."
+            text = "Tip: Inside Android 1.6 Browser, visit http://10.0.2.2:${SharedHttpServer.PORT}/ (note the .0.) to browse & download files directly from your shared folder."
             textSize = 12f
             setTextColor(Color.parseColor("#7E8794"))
-            setPadding(0, 24, 0, 16)
+            setPadding(0, 24, 0, 10)
         }
         content.addView(browserHint)
+
+        content.addView(
+            makeButton("Open http://10.0.2.2:${SharedHttpServer.PORT}/ in 1.6 Browser", "#2C333D") {
+                openSharedInGuestBrowser()
+            },
+            LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = 16
+            }
+        )
 
         scroll.addView(content)
         root.addView(scroll, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
@@ -159,7 +168,7 @@ class SharedStorageActivity : AppCompatActivity() {
         }
     }
 
-    private fun refreshAll() {
+    private fun refreshAll(preserveStatus: Boolean = false) {
         val tree = getSelectedTree()
         folderLabel.text = if (tree != null && tree.isDirectory) {
             "Host folder: ${tree.name ?: tree.uri}"
@@ -168,7 +177,7 @@ class SharedStorageActivity : AppCompatActivity() {
         }
 
         populateHostFiles(tree)
-        refreshGuestFiles()
+        refreshGuestFiles(preserveStatus)
     }
 
     private fun populateHostFiles(tree: DocumentFile?) {
@@ -219,15 +228,19 @@ class SharedStorageActivity : AppCompatActivity() {
         }
     }
 
-    private fun refreshGuestFiles() {
-        statusLabel.text = "Connecting to Android 1.6 ADB..."
+    private fun refreshGuestFiles(preserveStatus: Boolean = false) {
+        if (!preserveStatus) {
+            statusLabel.text = "Connecting to Android 1.6 ADB..."
+        }
         guestListContainer.removeAllViews()
 
         thread(name = "GuestList") {
             try {
                 if (!adb.isReady()) {
                     runOnUiThread {
-                        statusLabel.text = "Android 1.6 is still booting (ADB not ready yet). Tap Refresh in a few seconds."
+                        if (!preserveStatus) {
+                            statusLabel.text = "Android 1.6 is still booting (ADB not ready yet). Tap Refresh in a few seconds."
+                        }
                         guestListContainer.addView(makeEmptyRow("Waiting for Android 1.6 to finish booting..."))
                     }
                     return@thread
@@ -235,7 +248,9 @@ class SharedStorageActivity : AppCompatActivity() {
                 adb.shell("mkdir /sdcard/Shared")
                 val entries = adb.listDir("/sdcard/Shared")
                 runOnUiThread {
-                    statusLabel.text = "Connected to Android 1.6 ADB • Live transfer ready"
+                    if (!preserveStatus) {
+                        statusLabel.text = "Connected to Android 1.6 ADB • Live transfer ready"
+                    }
                     guestListContainer.removeAllViews()
                     if (entries.isEmpty()) {
                         guestListContainer.addView(makeEmptyRow("/sdcard/Shared is empty."))
@@ -314,11 +329,10 @@ class SharedStorageActivity : AppCompatActivity() {
                 } ?: throw IllegalStateException("Cannot open selected APK")
 
                 runOnUiThread { statusLabel.text = "Installing $safeName inside Android 1.6..." }
-                val out = adb.shell("pm install -r \"$remotePath\"").trim()
+                val out = installStagedFromGuest(remotePath, safeName)
                 runOnUiThread {
-                    statusLabel.text = "Install result: ${out.ifEmpty { "Done" }}"
-                    Toast.makeText(this, out.ifEmpty { "APK installed!" }, Toast.LENGTH_LONG).show()
-                    refreshAll()
+                    showInstallOutcome(safeName, out)
+                    refreshAll(preserveStatus = true)
                 }
             } catch (e: Exception) {
                 runOnUiThread {
@@ -340,17 +354,20 @@ class SharedStorageActivity : AppCompatActivity() {
                     adb.pushStream(input, remotePath)
                 } ?: throw IllegalStateException("Cannot read $name")
 
-                val msg = if (installApk) {
+                if (installApk) {
                     runOnUiThread { statusLabel.text = "Installing $safeName in Android 1.6..." }
-                    val res = adb.shell("pm install -r \"$remotePath\"").trim()
-                    "Installed: $res"
+                    val res = installStagedFromGuest(remotePath, safeName)
+                    runOnUiThread {
+                        showInstallOutcome(safeName, res)
+                        refreshGuestFiles(preserveStatus = true)
+                    }
                 } else {
-                    "Pushed to $remotePath"
-                }
-                runOnUiThread {
-                    statusLabel.text = msg
-                    Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
-                    refreshGuestFiles()
+                    val msg = "Pushed to $remotePath"
+                    runOnUiThread {
+                        statusLabel.text = msg
+                        Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+                        refreshGuestFiles(preserveStatus = true)
+                    }
                 }
             } catch (e: Exception) {
                 runOnUiThread {
@@ -394,17 +411,82 @@ class SharedStorageActivity : AppCompatActivity() {
     }
 
     private fun installExistingGuestApk(remotePath: String) {
-        statusLabel.text = "Installing $remotePath..."
+        val safeName = remotePath.substringAfterLast('/').replace(Regex("[^a-zA-Z0-9._-]"), "_")
+        statusLabel.text = "Installing $safeName..."
         thread(name = "InstallGuestApk") {
             try {
-                val res = adb.shell("pm install -r \"$remotePath\"").trim()
+                val res = installStagedFromGuest(remotePath, safeName)
                 runOnUiThread {
-                    statusLabel.text = "Install result: $res"
-                    Toast.makeText(this, res, Toast.LENGTH_LONG).show()
+                    showInstallOutcome(safeName, res)
                 }
             } catch (e: Exception) {
                 runOnUiThread {
                     statusLabel.text = "Install failed: ${e.message}"
+                }
+            }
+        }
+    }
+
+    /**
+     * Android 1.6 vold mounts /sdcard with fmask=0702 (owner=system has 000 permissions),
+     * so PackageManagerService gets EACCES when installing directly from /sdcard and reports
+     * INSTALL_FAILED_INSUFFICIENT_STORAGE. Staging a 0644 copy under /data/local/tmp fixes this.
+     */
+    private fun installStagedFromGuest(sourcePath: String, safeName: String): String {
+        val tmpPath = "/data/local/tmp/$safeName"
+        try {
+            adb.shell("mkdir /data/local/tmp")
+            adb.shell("cat \"$sourcePath\" > \"$tmpPath\" && chmod 644 \"$tmpPath\"", timeoutMs = 60_000)
+            return adb.shell("pm install -r \"$tmpPath\"", timeoutMs = 120_000).trim()
+        } finally {
+            try {
+                adb.shell("rm \"$tmpPath\"")
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    private fun showInstallOutcome(apkName: String, rawOutput: String) {
+        val out = rawOutput.ifEmpty { "(no output from pm)" }
+        val ok = out.contains("Success", ignoreCase = true)
+        if (ok) {
+            statusLabel.text = "Installed $apkName successfully!"
+            Toast.makeText(this, "Installed $apkName!", Toast.LENGTH_LONG).show()
+        } else {
+            val hint = when {
+                out.contains("INSTALL_FAILED_OLDER_SDK") ->
+                    "\n\nThis APK requires a newer Android version than Android 1.6 (API 4)."
+                out.contains("INSTALL_PARSE_FAILED_NO_CERTIFICATES") ->
+                    "\n\nAndroid 1.6 only supports v1 (JAR) APK signatures. Re-sign the APK with v1 signing."
+                out.contains("INSTALL_FAILED_CPU_ABI_INCOMPATIBLE") || out.contains("INSTALL_FAILED_MISSING_SHARED_LIBRARY") ->
+                    "\n\nThis APK uses native libraries or shared libs incompatible with Android 1.6 ARM (armeabi)."
+                out.contains("INSTALL_FAILED_UPDATE_INCOMPATIBLE") ->
+                    "\n\nA differently signed version of this app is already installed."
+                out.contains("INSTALL_FAILED_INSUFFICIENT_STORAGE") ->
+                    "\n\nNot enough free space on /data (or APK could not be copied)."
+                else -> ""
+            }
+            statusLabel.text = "Install failed for $apkName"
+            AlertDialog.Builder(this)
+                .setTitle("APK Install Failed")
+                .setMessage("$apkName\n\n$out$hint")
+                .setPositiveButton("OK", null)
+                .show()
+        }
+    }
+
+    private fun openSharedInGuestBrowser() {
+        statusLabel.text = "Opening http://10.0.2.2:${SharedHttpServer.PORT}/ in Android 1.6 Browser..."
+        thread(name = "OpenGuestBrowser") {
+            try {
+                adb.shell("am start -a android.intent.action.VIEW -d http://10.0.2.2:${SharedHttpServer.PORT}/")
+                runOnUiThread {
+                    Toast.makeText(this, "Opened in Android 1.6 Browser", Toast.LENGTH_SHORT).show()
+                    finish()
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    statusLabel.text = "Could not open Browser: ${e.message}"
                 }
             }
         }
