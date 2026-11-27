@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.MiniDroid" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">#121417</item>
+        <item name="android:statusBarColor">#121417</item>
+        <item name="android:navigationBarColor">#121417</item>
+        <item name="colorPrimary">#689F38</item>
+        <item name="colorPrimaryDark">#33691E</item>
+        <item name="colorAccent">#9CCC65</item>
+    </style>
+</resources>

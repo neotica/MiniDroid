@@ -1,0 +1,155 @@
+--- a/meson.build
++++ b/meson.build
+@@ -1372,7 +1372,7 @@ rt = not_found
+ if host_os != 'windows'
+   have_shm_open = cc.has_function('shm_open')
+   if not have_shm_open
+-    rt = cc.find_library('rt', required: true)
++    rt = cc.find_library('rt', required: false)
+   endif
+ endif
+ 
+@@ -2895,9 +2895,6 @@ config_host_data.set('CONFIG_PTHREAD_AFFINITY_NP', cc.links(osdep_prefix + '''
+     CPU_FREE(cpuset);
+     return 0;
+   }''', dependencies: threads))
+-config_host_data.set('CONFIG_SIGNALFD', cc.links(osdep_prefix + '''
+-  #include <sys/signalfd.h>
+-  int main(void) { return signalfd(-1, NULL, SFD_CLOEXEC); }'''))
+ 
+ config_host_data.set('HAVE_MLOCKALL', cc.links(osdep_prefix + '''
+   #include <sys/mman.h>
+@@ -3256,7 +3253,7 @@ disassemblers = {
+   'loongarch' : ['CONFIG_LOONGARCH_DIS'],
+ }
+ 
+-have_ivshmem = config_host_data.get('CONFIG_EVENTFD')
++have_ivshmem = false
+ host_kconfig = \
+   (get_option('fuzzing') ? ['CONFIG_FUZZ=y'] : []) + \
+   (have_tpm ? ['CONFIG_TPM=y'] : []) + \
+--- a/util/drm.c
++++ b/util/drm.c
+@@ -17,7 +17,6 @@
+ #include "qemu/osdep.h"
+ #include "qemu/drm.h"
+ 
+-#include <glob.h>
+ #include <dirent.h>
+ 
+ int qemu_drm_rendernode_open(const char *rendernode)
+--- a/block/file-posix.c
++++ b/block/file-posix.c
+@@ -427,7 +427,7 @@ static void raw_probe_alignment(BlockDriverState *bs, int fd, Error **errp)
+     bs->bl.request_alignment = 0;
+     s->buf_align = 0;
+ 
+-#if defined(__linux__) && defined(STATX_DIOALIGN)
++#if defined(__linux__) && defined(STATX_DIOALIGN) && !defined(__ANDROID__)
+     struct statx stx;
+ 
+     /*
+--- a/system/vl.c
++++ b/system/vl.c
+@@ -145,6 +145,37 @@
+ #include "qemu/keyval.h"
+ #include "memory-internal.h"
+ 
++#ifdef __ANDROID__
++#include <stdbool.h>
++#include <dlfcn.h>
++#include <malloc.h>
++#include <android/api-level.h>
++static void android_disable_tags(void)
++{
++    void *lib_handle = dlopen("libc.so", RTLD_LAZY);
++    if (lib_handle) {
++        if (android_get_device_api_level() >= 31) {
++            int (*mallopt_func)(int, int) = dlsym(lib_handle, "mallopt");
++            if (mallopt_func) {
++                mallopt_func(M_BIONIC_SET_HEAP_TAGGING_LEVEL, 0);
++            }
++            dlclose(lib_handle);
++            return;
++        }
++        bool (*android_mallopt)(int opcode, void *arg, size_t arg_size) =
++            dlsym(lib_handle, "android_mallopt");
++        if (android_mallopt) {
++            int android_malloc_tag_level = 0;
++            android_mallopt(8, &android_malloc_tag_level,
++                            sizeof(android_malloc_tag_level));
++        }
++        dlclose(lib_handle);
++    }
++}
++#else
++static void android_disable_tags(void) {}
++#endif
++
+ #define MAX_VIRTIO_CONSOLES 1
+ 
+ typedef struct BlockdevOptionsQueueEntry {
+@@ -2861,6 +2892,8 @@ void qemu_init(int argc, char **argv)
+     bool userconfig = true;
+     FILE *vmstate_dump_file = NULL;
+ 
++    android_disable_tags();
++
+     qemu_add_opts(&qemu_drive_opts);
+     qemu_add_drive_opts(&qemu_legacy_drive_opts);
+     qemu_add_drive_opts(&qemu_common_drive_opts);
+--- a/util/oslib-posix.c
++++ b/util/oslib-posix.c
+@@ -61,6 +61,52 @@
+ #include "qemu/memalign.h"
+ #include "qemu/mmap-alloc.h"
+ 
++#ifdef __ANDROID__
++static int shm_unlink(const char *name)
++{
++    const char *tmpdir = getenv("TMPDIR");
++    char *fname;
++    int ret;
++
++    if (!tmpdir || !tmpdir[0]) {
++        tmpdir = "/data/local/tmp";
++    }
++    while (name[0] == '/') {
++        ++name;
++    }
++    if (name[0] == '\0') {
++        errno = EINVAL;
++        return -1;
++    }
++    fname = g_strdup_printf("%s/%s", tmpdir, name);
++    ret = unlink(fname);
++    g_free(fname);
++    return ret;
++}
++
++static int shm_open(const char *name, int oflag, mode_t mode)
++{
++    const char *tmpdir = getenv("TMPDIR");
++    char *fname;
++    int fd;
++
++    if (!tmpdir || !tmpdir[0]) {
++        tmpdir = "/data/local/tmp";
++    }
++    while (name[0] == '/') {
++        ++name;
++    }
++    if (name[0] == '\0') {
++        errno = EINVAL;
++        return -1;
++    }
++    fname = g_strdup_printf("%s/%s", tmpdir, name);
++    fd = open(fname, oflag | O_CLOEXEC, mode);
++    g_free(fname);
++    return fd;
++}
++#endif
++
+ #define MAX_MEM_PREALLOC_THREAD_COUNT 32
+ 
+ struct MemsetThread;
