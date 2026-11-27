@@ -9,12 +9,16 @@ import java.net.InetSocketAddress
 import java.net.Socket
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 /**
  * Pure-Kotlin RFB 3.8 (VNC) client tailored for local QEMU (-vnc 127.0.0.1:1).
  * Streams 32-bit ARGB_8888 pixels directly into a pixel buffer and sends
- * absolute touch pointer events + X11 keysyms back to Goldfish.
+ * absolute touch pointer events + X11 keysyms back to Goldfish on a dedicated
+ * single-threaded non-blocking writer executor (never doing socket I/O on the UI thread).
  */
 class VncClient(
     private val host: String = "127.0.0.1",
@@ -28,6 +32,7 @@ class VncClient(
     private var socket: Socket? = null
     private var out: DataOutputStream? = null
     private val writeLock = Any()
+    private var writer: ScheduledExecutorService? = null
 
     @Volatile
     var fbWidth: Int = 320
@@ -40,6 +45,9 @@ class VncClient(
     fun start() {
         if (running) return
         running = true
+        writer = Executors.newSingleThreadScheduledExecutor { r ->
+            Thread(r, "MiniDroidVncWriter").apply { isDaemon = true }
+        }
         thread(name = "MiniDroidVnc", isDaemon = true) {
             runLoop()
         }
@@ -47,6 +55,8 @@ class VncClient(
 
     fun stop() {
         running = false
+        writer?.shutdownNow()
+        writer = null
         try {
             socket?.close()
         } catch (_: Exception) {
@@ -58,6 +68,35 @@ class VncClient(
         val cx = x.coerceIn(0, (fbWidth - 1).coerceAtLeast(0))
         val cy = y.coerceIn(0, (fbHeight - 1).coerceAtLeast(0))
         val mask = if (pressed) 1 else 0
+        val exec = writer ?: return
+        try {
+            exec.execute {
+                writePointerNow(cx, cy, mask)
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    fun sendKey(keysym: Int, down: Boolean) {
+        val exec = writer ?: return
+        try {
+            exec.execute {
+                writeKeyNow(keysym, down)
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    fun tapKey(keysym: Int) {
+        val exec = writer ?: return
+        try {
+            exec.execute { writeKeyNow(keysym, true) }
+            exec.schedule({ writeKeyNow(keysym, false) }, 45L, TimeUnit.MILLISECONDS)
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun writePointerNow(cx: Int, cy: Int, mask: Int) {
         synchronized(writeLock) {
             val o = out ?: return
             try {
@@ -71,7 +110,7 @@ class VncClient(
         }
     }
 
-    fun sendKey(keysym: Int, down: Boolean) {
+    private fun writeKeyNow(keysym: Int, down: Boolean) {
         synchronized(writeLock) {
             val o = out ?: return
             try {
@@ -82,17 +121,6 @@ class VncClient(
                 o.flush()
             } catch (_: Exception) {
             }
-        }
-    }
-
-    fun tapKey(keysym: Int) {
-        thread(isDaemon = true) {
-            sendKey(keysym, true)
-            try {
-                Thread.sleep(45)
-            } catch (_: InterruptedException) {
-            }
-            sendKey(keysym, false)
         }
     }
 
@@ -109,6 +137,13 @@ class VncClient(
                         break
                     }
                 }
+            } finally {
+                synchronized(writeLock) { out = null }
+                try {
+                    socket?.close()
+                } catch (_: Exception) {
+                }
+                socket = null
             }
         }
     }
@@ -122,7 +157,6 @@ class VncClient(
 
         val input = DataInputStream(BufferedInputStream(sock.getInputStream(), 256 * 1024))
         val output = DataOutputStream(BufferedOutputStream(sock.getOutputStream(), 16 * 1024))
-        synchronized(writeLock) { out = output }
 
         // 1. ProtocolVersion handshake
         val ver = ByteArray(12)
@@ -193,6 +227,7 @@ class VncClient(
             output.writeInt(0)
             output.writeInt(1)
             output.flush()
+            out = output
         }
 
         onConnected(w, h)

@@ -40,6 +40,8 @@ class EmulatorView @JvmOverloads constructor(
         style = Paint.Style.STROKE
         strokeWidth = 2f
     }
+    private var lastTouchX = -1
+    private var lastTouchY = -1
 
     init {
         isFocusable = true
@@ -98,12 +100,20 @@ class EmulatorView @JvmOverloads constructor(
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 requestFocus()
+                lastTouchX = gx
+                lastTouchY = gy
                 client.sendPointer(gx, gy, pressed = true)
             }
             MotionEvent.ACTION_MOVE -> {
-                client.sendPointer(gx, gy, pressed = true)
+                if (gx != lastTouchX || gy != lastTouchY) {
+                    lastTouchX = gx
+                    lastTouchY = gy
+                    client.sendPointer(gx, gy, pressed = true)
+                }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                lastTouchX = -1
+                lastTouchY = -1
                 client.sendPointer(gx, gy, pressed = false)
             }
         }
