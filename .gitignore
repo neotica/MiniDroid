@@ -1,0 +1,33 @@
+# macOS
+.DS_Store
+
+# Upstream QEMU source & tarballs (fetched locally)
+qemu-*/
+qemu-*.tar.xz
+
+# Build outputs & cross-compile sysroots
+build-mac/
+build-android/
+deps-android/
+
+# Android 1.6 SDK images & runtime disk images (fetched from Google SDK archive)
+images/
+
+# Temporary reference clones / dumps
+ref/aosp-qemu-donut/
+ref/ramdisk_unpacked/
+ref/termux-qemu-files.json
+
+# Scratch screenshots
+*.ppm
+/boot-screen*.png
+/home-unlocked.png
+
+# Android Gradle build outputs (Phase 4)
+android-app/.gradle/
+android-app/local.properties
+android-app/**/build/
+android-app/**/*.iml
+android-app/.idea/
+android-app/app/src/main/jniLibs/
+android-app/app/src/main/assets/images/

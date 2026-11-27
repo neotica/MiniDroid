@@ -1,0 +1,34 @@
+--- a/hw/arm/Kconfig
++++ b/hw/arm/Kconfig
+@@ -243,6 +243,12 @@ config SX1
+     depends on TCG && ARM
+     select OMAP
+ 
++config ANDROID_GOLDFISH
++    bool
++    default y
++    depends on TCG && ARM
++    select SMC91C111
++
+ config VERSATILE
+     bool
+     default y
+--- a/hw/arm/meson.build
++++ b/hw/arm/meson.build
+@@ -107,6 +107,17 @@ arm_common_ss.add(when: 'CONFIG_RASPI', if_true: files('bcm2838_peripherals.c'))
+ arm_common_ss.add(when: 'CONFIG_STRONGARM', if_true: files('strongarm.c'))
+ arm_common_ss.add(when: 'CONFIG_SX1', if_true: files('omap_sx1.c'))
++arm_common_ss.add(when: 'CONFIG_ANDROID_GOLDFISH', if_true: files(
++  'goldfish/goldfish_android.c',
++  'goldfish/goldfish_battery.c',
++  'goldfish/goldfish_bus.c',
++  'goldfish/goldfish_events.c',
++  'goldfish/goldfish_fb.c',
++  'goldfish/goldfish_mmc.c',
++  'goldfish/goldfish_nand.c',
++  'goldfish/goldfish_timer.c',
++  'goldfish/goldfish_tty.c',
++))
+ arm_common_ss.add(when: 'CONFIG_VERSATILE', if_true: files('versatilepb.c'))
+ arm_common_ss.add(when: 'CONFIG_VEXPRESS', if_true: files('vexpress.c'))
+ 
