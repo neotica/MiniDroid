@@ -106,7 +106,7 @@ class VirtualModemServer(
         }
     }
 
-    private class ModemState {
+    internal class ModemState {
         private var radioOn = false
         private var voiceMode = 2
         private var dataMode = 1

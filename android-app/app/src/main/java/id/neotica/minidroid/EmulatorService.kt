@@ -22,7 +22,9 @@ class EmulatorService : Service() {
     companion object {
         const val VNC_PORT = 5901
         const val ADB_PORT = 15555
-        const val MODEM_PORT = 15556
+        const val QEMUD_PORT = 15556
+        const val MODEM_PORT = QEMUD_PORT
+        const val AUDIO_PORT = 15558
 
         const val ACTION_START = "id.neotica.minidroid.START"
         const val ACTION_STOP = "id.neotica.minidroid.STOP"
@@ -92,7 +94,8 @@ class EmulatorService : Service() {
 
     private var qemuProcess: Process? = null
     private var httpServer: SharedHttpServer? = null
-    private var modemServer: VirtualModemServer? = null
+    private var qemudServer: QemudServer? = null
+    private var audioServer: AudioPlaybackServer? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private val procLock = Any()
 
@@ -169,8 +172,11 @@ class EmulatorService : Service() {
             writeHostResolvConf(resolvFile, null)
             registerHostDnsSync(resolvFile)
 
-            if (modemServer == null) {
-                modemServer = VirtualModemServer(MODEM_PORT).apply { start() }
+            if (qemudServer == null) {
+                qemudServer = QemudServer(applicationContext, QEMUD_PORT).apply { start() }
+            }
+            if (audioServer == null) {
+                audioServer = AudioPlaybackServer(AUDIO_PORT).apply { start() }
             }
 
             val cmd = listOf(
@@ -180,10 +186,11 @@ class EmulatorService : Service() {
                 "-m", "128M",
                 "-kernel", ImageInstaller.kernelFile(this).absolutePath,
                 "-initrd", ImageInstaller.ramdiskFile(this).absolutePath,
-                "-append", "qemu=1 console=ttyS0 android.checkjni=1 android.ndns=1 android.ril=ttyS1",
+                "-append", "qemu=1 console=ttyS0 android.checkjni=1 android.ndns=1 android.qemud=ttyS1 android.ril=ttyS1",
                 "-nic", "user,model=smc91c111,hostfwd=tcp:127.0.0.1:$ADB_PORT-:5555",
+                "-chardev", "socket,id=audio0,host=127.0.0.1,port=$AUDIO_PORT",
                 "-serial", "file:${bootLog.absolutePath}",
-                "-serial", "tcp:127.0.0.1:$MODEM_PORT",
+                "-serial", "tcp:127.0.0.1:$QEMUD_PORT",
                 "-vnc", "127.0.0.1:1",
                 "-display", "none"
             )
@@ -244,8 +251,10 @@ class EmulatorService : Service() {
 
     private fun stopQemuProcess() {
         unregisterHostDnsSync()
-        modemServer?.stop()
-        modemServer = null
+        audioServer?.stop()
+        audioServer = null
+        qemudServer?.stop()
+        qemudServer = null
         httpServer?.stop()
         httpServer = null
         synchronized(procLock) {

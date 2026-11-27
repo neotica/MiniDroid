@@ -88,6 +88,7 @@ static void goldfish_machine_init_fn(MachineState *machine)
     }
 
     goldfish_fb_create(bus, 0, (int)gms->fb_width, (int)gms->fb_height);
+    goldfish_audio_create(bus, 0xff004000, 0);
 
     /* SD card (-M goldfish,...,sdcard=sdcard.img) */
     if (gms->sdcard_img && gms->sdcard_img[0]) {

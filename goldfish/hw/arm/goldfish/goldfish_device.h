@@ -51,6 +51,7 @@ void goldfish_tty_create(GoldfishBus *bus, Chardev *chr, int id,
 void goldfish_nand_init(GoldfishBus *bus, const char *system_path,
                         const char *userdata_path, const char *cache_path);
 void goldfish_fb_create(GoldfishBus *bus, int id, int width, int height);
+void goldfish_audio_create(GoldfishBus *bus, uint32_t base, int id);
 void goldfish_events_create(GoldfishBus *bus, int width, int height);
 void goldfish_mmc_create(GoldfishBus *bus, uint32_t base, int id,
                          const char *sdcard_path);

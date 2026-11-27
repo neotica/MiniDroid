@@ -15,11 +15,12 @@
      default y
 --- a/hw/arm/meson.build
 +++ b/hw/arm/meson.build
-@@ -107,6 +107,17 @@ arm_common_ss.add(when: 'CONFIG_RASPI', if_true: files('bcm2838_peripherals.c'))
+@@ -107,6 +107,18 @@ arm_common_ss.add(when: 'CONFIG_RASPI', if_true: files('bcm2838_peripherals.c'))
  arm_common_ss.add(when: 'CONFIG_STRONGARM', if_true: files('strongarm.c'))
  arm_common_ss.add(when: 'CONFIG_SX1', if_true: files('omap_sx1.c'))
 +arm_common_ss.add(when: 'CONFIG_ANDROID_GOLDFISH', if_true: files(
 +  'goldfish/goldfish_android.c',
++  'goldfish/goldfish_audio.c',
 +  'goldfish/goldfish_battery.c',
 +  'goldfish/goldfish_bus.c',
 +  'goldfish/goldfish_events.c',

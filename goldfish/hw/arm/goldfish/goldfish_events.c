@@ -205,6 +205,8 @@ static unsigned int map_android_key(unsigned int lnx)
         return KEY_F1;        /* 59 = MENU in qwerty.kl */
     case KEY_F5:
         return KEY_SEARCH;    /* 217 = SEARCH */
+    case KEY_F6:
+        return KEY_CAMERA;    /* 212 = CAMERA */
     case KEY_F7:
         return KEY_POWER;     /* 116 = POWER */
     case KEY_F8:
@@ -308,6 +310,7 @@ void goldfish_events_create(GoldfishBus *bus, int width, int height)
     events_set_bit(s, EV_KEY, KEY_VOLUMEUP);
     events_set_bit(s, EV_KEY, KEY_VOLUMEDOWN);
     events_set_bit(s, EV_KEY, KEY_POWER);
+    events_set_bit(s, EV_KEY, KEY_CAMERA);
     events_set_bit(s, EV_KEY, KEY_SEARCH);
     events_set_bit(s, EV_KEY, KEY_DOWN);
     events_set_bit(s, EV_KEY, KEY_UP);

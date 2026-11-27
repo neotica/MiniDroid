@@ -177,6 +177,9 @@ class MainActivity : AppCompatActivity() {
     private fun showPowerMenu() {
         val items = arrayOf(
             "Power Button (Wake / Sleep)",
+            "Guest Volume Up",
+            "Guest Volume Down",
+            "Camera Shutter Button",
             "Reboot Android 1.6",
             "View Boot / QEMU Logs",
             "Factory Reset Userdata",
@@ -187,13 +190,16 @@ class MainActivity : AppCompatActivity() {
             .setItems(items) { _, which ->
                 when (which) {
                     0 -> vncClient?.tapKey(0xFFC4) // F7 -> KEY_POWER
-                    1 -> {
+                    1 -> vncClient?.tapKey(0xFFC6) // F9 -> KEY_VOLUMEUP
+                    2 -> vncClient?.tapKey(0xFFC5) // F8 -> KEY_VOLUMEDOWN
+                    3 -> vncClient?.tapKey(0xFFC3) // F6 -> KEY_CAMERA
+                    4 -> {
                         disconnectVnc()
                         EmulatorService.restartVm(this)
                     }
-                    2 -> showLogsDialog()
-                    3 -> confirmFactoryReset()
-                    4 -> {
+                    5 -> showLogsDialog()
+                    6 -> confirmFactoryReset()
+                    7 -> {
                         disconnectVnc()
                         EmulatorService.stopVm(this)
                         finish()

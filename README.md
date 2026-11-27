@@ -13,7 +13,8 @@ Port of the classic **Android 1.6 (Donut) ARM Goldfish** virtual platform onto m
   - `goldfish_tty` (serial console)
   - `goldfish_nand` (MTD YAFFS2 2048+64 B OOB for `system`, `userdata`, `cache`)
   - `goldfish_fb` (320×480 RGB565 → QEMU `DisplaySurface`/VNC with non-stalling 16 ms frame completion)
-  - `goldfish_events` (`qwerty` keypad + 1:1 absolute touchscreen)
+  - `goldfish_audio` (`/dev/eac`, double-buffered 44.1 kHz 16-bit stereo PCM streamed over local `audio0` chardev → Android `AudioTrack`)
+  - `goldfish_events` (`qwerty` keypad + 1:1 absolute touchscreen + `KEY_CAMERA` shutter)
   - `goldfish_mmc` (SD card controller mounting `sdcard.img` at `/sdcard`)
   - `goldfish-battery` + `goldfish_memlog` + upstream `smc91c111` Ethernet (`eth0 10.0.2.15`, stock root `adbd` listening on TCP `5555`)
 - **Android Host Engine (`scripts/build-android-deps.sh`, `scripts/build-android-qemu.sh`):**
@@ -21,8 +22,9 @@ Port of the classic **Android 1.6 (Donut) ARM Goldfish** virtual platform onto m
 - **MiniDroid Android App (`android-app/`):**
   - Runs `libqemu.so` in a foreground service (`useLegacyPackaging = true` for Android 10+ W^X compatibility).
   - Pure-Kotlin RFB 3.8 VNC client (`VncClient.kt` + `EmulatorView.kt`) for crisp 320×480 display, 1:1 touch input, soft keyboard bridge, and classic Android 1.6 hardware buttons (**Back / Home / Menu / Search / Keyboard**).
-  - **Live Internet Bridge (`VirtualModemServer.kt` + Android `libslirp` DNS patch):**
-    - Emulates Android 1.6's GSM/3G AT modem on `/dev/ttyS1` (`android.ril=ttyS1`) so Donut shows **3G Mobile Data CONNECTED** and syncs system time/timezone automatically (`%CTZV`).
+  - **Live Internet, Audio & Motion Sensors (`QemudServer.kt`, `AudioPlaybackServer.kt`, Android `libslirp` DNS patch):**
+    - Multiplexes Android 1.6's `qemud` (`/dev/ttyS1`, `android.qemud=ttyS1`) for **3G Mobile Data** (`gsm` + `%CTZV` clock sync), live host **Accelerometer / Magnetic Field / Orientation** (`sensors` via Android `SensorManager`), `boot-properties`, and `hw-control`.
+    - Streams 44.1 kHz stereo PCM audio from Goldfish `/dev/eac` straight into Android's `AudioTrack`.
     - Dynamically syncs the host phone's active Wi-Fi or Mobile Data DNS servers into `<filesDir>/resolv.conf` (`SLIRP_RESOLV_CONF`, with `8.8.8.8`/`1.1.1.1` fallback) so all guest traffic rides directly over your phone's real internet connection.
   - **Live Shared Storage & APK Manager (`SharedStorageActivity.kt`, `AdbClient.kt`, `SharedHttpServer.kt`):**
     - Pick any shared folder on your modern phone via Storage Access Framework (or use the default `Shared/` folder).
