@@ -26,9 +26,9 @@ class EmulatorService : Service() {
         const val MODEM_PORT = QEMUD_PORT
         const val AUDIO_PORT = 15558
 
-        const val ACTION_START = "id.neotica.minidroid.START"
-        const val ACTION_STOP = "id.neotica.minidroid.STOP"
-        const val ACTION_RESTART = "id.neotica.minidroid.RESTART"
+        const val ACTION_START = "${BuildConfig.APPLICATION_ID}.START"
+        const val ACTION_STOP = "${BuildConfig.APPLICATION_ID}.STOP"
+        const val ACTION_RESTART = "${BuildConfig.APPLICATION_ID}.RESTART"
 
         private const val CHANNEL_ID = "minidroid_vm"
         private const val NOTIF_ID = 1001
@@ -115,14 +115,14 @@ class EmulatorService : Service() {
                 return START_NOT_STICKY
             }
             ACTION_RESTART -> {
-                beginForeground("Restarting Android 1.6...")
+                beginForeground("Restarting ${GuestProfile.osName}...")
                 thread(name = "MiniDroidRestart") {
                     stopQemuProcess()
                     launchQemu()
                 }
             }
             else -> {
-                beginForeground("Starting Android 1.6...")
+                beginForeground("Starting ${GuestProfile.osName}...")
                 synchronized(procLock) {
                     if (qemuProcess?.isAlive == true) {
                         return START_STICKY
@@ -144,7 +144,7 @@ class EmulatorService : Service() {
     private fun launchQemu() {
         try {
             lastError = null
-            updateState("Preparing Android 1.6 images...", false)
+            updateState("Preparing ${GuestProfile.osName} images...", false)
             ImageInstaller.ensureImagesExtracted(this) { msg ->
                 updateState(msg, false)
             }
@@ -165,7 +165,8 @@ class EmulatorService : Service() {
                 append(",userdata=").append(ImageInstaller.userdataFile(this@EmulatorService).absolutePath)
                 append(",cache=").append(ImageInstaller.cacheFile(this@EmulatorService).absolutePath)
                 append(",sdcard=").append(ImageInstaller.sdcardFile(this@EmulatorService).absolutePath)
-                append(",width=320,height=480")
+                append(",width=").append(GuestProfile.width)
+                append(",height=").append(GuestProfile.height)
             }
 
             val resolvFile = File(filesDir, "resolv.conf")
@@ -183,10 +184,10 @@ class EmulatorService : Service() {
                 qemuBin.absolutePath,
                 "-L", filesDir.absolutePath,
                 "-M", machineArg,
-                "-m", "128M",
+                "-m", "${GuestProfile.ramMb}M",
                 "-kernel", ImageInstaller.kernelFile(this).absolutePath,
                 "-initrd", ImageInstaller.ramdiskFile(this).absolutePath,
-                "-append", "qemu=1 console=ttyS0 android.checkjni=1 android.ndns=1 android.qemud=ttyS1 android.ril=ttyS1",
+                "-append", GuestProfile.kernelAppend,
                 "-nic", "user,model=smc91c111,hostfwd=tcp:127.0.0.1:$ADB_PORT-:5555",
                 "-chardev", "socket,id=audio0,host=127.0.0.1,port=$AUDIO_PORT",
                 "-serial", "file:${bootLog.absolutePath}",
@@ -205,7 +206,7 @@ class EmulatorService : Service() {
                 httpServer = SharedHttpServer(applicationContext).apply { start() }
             }
 
-            updateState("Booting Android 1.6...", true)
+            updateState("Booting ${GuestProfile.osName}...", true)
             val proc = pb.start()
             synchronized(procLock) {
                 qemuProcess = proc
@@ -364,7 +365,7 @@ class EmulatorService : Service() {
             Notification.Builder(this)
         }
         return builder
-            .setContentTitle("MiniDroid (Android 1.6)")
+            .setContentTitle("${GuestProfile.appTitle} (${GuestProfile.osName})")
             .setContentText(text)
             .setSmallIcon(R.drawable.ic_launcher)
             .setContentIntent(openIntent)

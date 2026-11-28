@@ -117,7 +117,7 @@ class SharedStorageActivity : AppCompatActivity() {
             textSize = 13f
             setTextColor(Color.parseColor("#9CCC65"))
             setPadding(0, 14, 0, 10)
-            text = "Checking Android 1.6 ADB bridge..."
+            text = "Checking ${GuestProfile.osName} ADB bridge..."
         }
         root.addView(statusLabel)
 
@@ -126,16 +126,16 @@ class SharedStorageActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
         }
 
-        content.addView(makeSectionTitle("Host Phone Shared Folder (tap to Push / Install in 1.6)"))
+        content.addView(makeSectionTitle("Host Phone Shared Folder (tap to Push / Install)"))
         hostListContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         content.addView(hostListContainer)
 
-        content.addView(makeSectionTitle("Android 1.6 /sdcard/Shared (tap to Pull to Host)"))
+        content.addView(makeSectionTitle("${GuestProfile.osName} /sdcard/Shared (tap to Pull to Host)"))
         guestListContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         content.addView(guestListContainer)
 
         val browserHint = TextView(this).apply {
-            text = "Tip: Inside Android 1.6 Browser, visit http://10.0.2.2:${SharedHttpServer.PORT}/ (note the .0.) to browse & download files directly from your shared folder."
+            text = "Tip: Inside ${GuestProfile.osName} Browser, visit http://10.0.2.2:${SharedHttpServer.PORT}/ (note the .0.) to browse & download files directly from your shared folder."
             textSize = 12f
             setTextColor(Color.parseColor("#7E8794"))
             setPadding(0, 24, 0, 10)
@@ -143,7 +143,7 @@ class SharedStorageActivity : AppCompatActivity() {
         content.addView(browserHint)
 
         content.addView(
-            makeButton("Open http://10.0.2.2:${SharedHttpServer.PORT}/ in 1.6 Browser", "#2C333D") {
+            makeButton("Open http://10.0.2.2:${SharedHttpServer.PORT}/ in ${GuestProfile.osName} Browser", "#2C333D") {
                 openSharedInGuestBrowser()
             },
             LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
@@ -230,7 +230,7 @@ class SharedStorageActivity : AppCompatActivity() {
 
     private fun refreshGuestFiles(preserveStatus: Boolean = false) {
         if (!preserveStatus) {
-            statusLabel.text = "Connecting to Android 1.6 ADB..."
+            statusLabel.text = "Connecting to ${GuestProfile.osName} ADB..."
         }
         guestListContainer.removeAllViews()
 
@@ -239,9 +239,9 @@ class SharedStorageActivity : AppCompatActivity() {
                 if (!adb.isReady()) {
                     runOnUiThread {
                         if (!preserveStatus) {
-                            statusLabel.text = "Android 1.6 is still booting (ADB not ready yet). Tap Refresh in a few seconds."
+                            statusLabel.text = "${GuestProfile.osName} is still booting (ADB not ready yet). Tap Refresh in a few seconds."
                         }
-                        guestListContainer.addView(makeEmptyRow("Waiting for Android 1.6 to finish booting..."))
+                        guestListContainer.addView(makeEmptyRow("Waiting for ${GuestProfile.osName} to finish booting..."))
                     }
                     return@thread
                 }
@@ -249,7 +249,7 @@ class SharedStorageActivity : AppCompatActivity() {
                 val entries = adb.listDir("/sdcard/Shared")
                 runOnUiThread {
                     if (!preserveStatus) {
-                        statusLabel.text = "Connected to Android 1.6 ADB • Live transfer ready"
+                        statusLabel.text = "Connected to ${GuestProfile.osName} ADB • Live transfer ready"
                     }
                     guestListContainer.removeAllViews()
                     if (entries.isEmpty()) {
@@ -280,7 +280,7 @@ class SharedStorageActivity : AppCompatActivity() {
 
     private fun onHostFileClicked(name: String, isApk: Boolean, openStream: () -> java.io.InputStream?) {
         val options = if (isApk) {
-            arrayOf("Push & Install APK in Android 1.6", "Push to /sdcard/Shared only")
+            arrayOf("Push & Install APK in ${GuestProfile.osName}", "Push to /sdcard/Shared only")
         } else {
             arrayOf("Push to /sdcard/Shared")
         }
@@ -295,7 +295,7 @@ class SharedStorageActivity : AppCompatActivity() {
 
     private fun onGuestFileClicked(name: String, isApk: Boolean) {
         val options = if (isApk) {
-            arrayOf("Pull to Host Shared Folder", "Install APK in Android 1.6", "Delete from /sdcard/Shared")
+            arrayOf("Pull to Host Shared Folder", "Install APK in ${GuestProfile.osName}", "Delete from /sdcard/Shared")
         } else {
             arrayOf("Pull to Host Shared Folder", "Delete from /sdcard/Shared")
         }
@@ -321,14 +321,14 @@ class SharedStorageActivity : AppCompatActivity() {
                 // Save a copy in the host shared folder so the user can move it around freely
                 saveCopyToHostShared(safeName) { contentResolver.openInputStream(uri) }
 
-                runOnUiThread { statusLabel.text = "Pushing $safeName to Android 1.6..." }
+                runOnUiThread { statusLabel.text = "Pushing $safeName to ${GuestProfile.osName}..." }
                 adb.shell("mkdir /sdcard/Shared")
                 val remotePath = "/sdcard/Shared/$safeName"
                 contentResolver.openInputStream(uri)?.use { input ->
                     adb.pushStream(input, remotePath)
                 } ?: throw IllegalStateException("Cannot open selected APK")
 
-                runOnUiThread { statusLabel.text = "Installing $safeName inside Android 1.6..." }
+                runOnUiThread { statusLabel.text = "Installing $safeName inside ${GuestProfile.osName}..." }
                 val out = installStagedFromGuest(remotePath, safeName)
                 runOnUiThread {
                     showInstallOutcome(safeName, out)
@@ -355,7 +355,7 @@ class SharedStorageActivity : AppCompatActivity() {
                 } ?: throw IllegalStateException("Cannot read $name")
 
                 if (installApk) {
-                    runOnUiThread { statusLabel.text = "Installing $safeName in Android 1.6..." }
+                    runOnUiThread { statusLabel.text = "Installing $safeName in ${GuestProfile.osName}..." }
                     val res = installStagedFromGuest(remotePath, safeName)
                     runOnUiThread {
                         showInstallOutcome(safeName, res)
@@ -379,7 +379,7 @@ class SharedStorageActivity : AppCompatActivity() {
     }
 
     private fun pullGuestFile(name: String) {
-        statusLabel.text = "Pulling $name from Android 1.6..."
+        statusLabel.text = "Pulling $name from ${GuestProfile.osName}..."
         thread(name = "PullFile") {
             try {
                 val tree = getSelectedTree()
@@ -455,11 +455,11 @@ class SharedStorageActivity : AppCompatActivity() {
         } else {
             val hint = when {
                 out.contains("INSTALL_FAILED_OLDER_SDK") ->
-                    "\n\nThis APK requires a newer Android version than Android 1.6 (API 4)."
+                    "\n\nThis APK requires a newer Android version than ${GuestProfile.osName} (API ${GuestProfile.apiLevel})."
                 out.contains("INSTALL_PARSE_FAILED_NO_CERTIFICATES") ->
-                    "\n\nAndroid 1.6 only supports v1 (JAR) APK signatures. Re-sign the APK with v1 signing."
+                    "\n\n${GuestProfile.osName} only supports v1 (JAR) APK signatures. Re-sign the APK with v1 signing."
                 out.contains("INSTALL_FAILED_CPU_ABI_INCOMPATIBLE") || out.contains("INSTALL_FAILED_MISSING_SHARED_LIBRARY") ->
-                    "\n\nThis APK uses native libraries or shared libs incompatible with Android 1.6 ARM (armeabi)."
+                    "\n\nThis APK uses native libraries or shared libs incompatible with ${GuestProfile.osName} ARM (armeabi)."
                 out.contains("INSTALL_FAILED_UPDATE_INCOMPATIBLE") ->
                     "\n\nA differently signed version of this app is already installed."
                 out.contains("INSTALL_FAILED_INSUFFICIENT_STORAGE") ->
@@ -476,12 +476,12 @@ class SharedStorageActivity : AppCompatActivity() {
     }
 
     private fun openSharedInGuestBrowser() {
-        statusLabel.text = "Opening http://10.0.2.2:${SharedHttpServer.PORT}/ in Android 1.6 Browser..."
+        statusLabel.text = "Opening http://10.0.2.2:${SharedHttpServer.PORT}/ in ${GuestProfile.osName} Browser..."
         thread(name = "OpenGuestBrowser") {
             try {
                 adb.shell("am start -a android.intent.action.VIEW -d http://10.0.2.2:${SharedHttpServer.PORT}/")
                 runOnUiThread {
-                    Toast.makeText(this, "Opened in Android 1.6 Browser", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Opened in ${GuestProfile.osName} Browser", Toast.LENGTH_SHORT).show()
                     finish()
                 }
             } catch (e: Exception) {

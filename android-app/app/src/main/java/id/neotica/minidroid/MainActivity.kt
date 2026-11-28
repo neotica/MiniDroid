@@ -72,7 +72,7 @@ class MainActivity : AppCompatActivity() {
 
         val titleCol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         titleCol.addView(TextView(this).apply {
-            text = "MiniDroid 1.6"
+            text = GuestProfile.appTitle
             textSize = 14f
             setTypeface(null, Typeface.BOLD)
             setTextColor(Color.parseColor("#9CCC65"))
@@ -199,7 +199,7 @@ class MainActivity : AppCompatActivity() {
         val client = VncClient(
             onConnected = { w, h ->
                 runOnUiThread {
-                    statusText.text = "Android 1.6 (${w}×${h}) • Tap Menu to unlock"
+                    statusText.text = "${GuestProfile.osName} (${w}×${h}) • Tap Menu to unlock"
                 }
             },
             onFrame = { pixels, w, h ->
@@ -237,7 +237,7 @@ class MainActivity : AppCompatActivity() {
                 if (EmulatorService.isRunning && adb.isReady()) {
                     runOnUiThread {
                         if (statusText.text.contains("Waiting") || statusText.text.contains("Booting")) {
-                            statusText.text = "Android 1.6 • ADB Ready"
+                            statusText.text = "${GuestProfile.osName} • ADB Ready"
                         }
                     }
                 }
@@ -316,13 +316,13 @@ class MainActivity : AppCompatActivity() {
             "Guest Volume Up",
             "Guest Volume Down",
             "Camera Shutter Button",
-            "Reboot Android 1.6",
+            "Reboot ${GuestProfile.osName}",
             "View Boot / QEMU Logs",
             "Factory Reset Userdata",
             "Shut Down Emulator"
         )
         AlertDialog.Builder(this)
-            .setTitle("MiniDroid 1.6 Controls")
+            .setTitle("${GuestProfile.appTitle} Controls")
             .setItems(items) { _, which ->
                 when (which) {
                     0 -> setFullscreen(!isFullscreen)
@@ -374,7 +374,7 @@ class MainActivity : AppCompatActivity() {
                 AlertDialog.Builder(this)
                     .setTitle("Resize SD Card to $chosenLabel?")
                     .setMessage(
-                        "Creates a fresh $chosenLabel FAT32 virtual SD card and reboots Android 1.6.\n\n" +
+                        "Creates a fresh $chosenLabel FAT32 virtual SD card and reboots ${GuestProfile.osName}.\n\n" +
                             "Internal storage (/data, 512 MB), installed apps, and your Host Shared Folder are kept. " +
                             "Existing files stored inside /sdcard will be wiped."
                     )
@@ -405,8 +405,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun confirmFactoryReset() {
         AlertDialog.Builder(this)
-            .setTitle("Factory Reset Android 1.6?")
-            .setMessage("This wipes installed apps and data inside Android 1.6 (your Host Shared Folder and SD card are kept).")
+            .setTitle("Factory Reset ${GuestProfile.osName}?")
+            .setMessage("This wipes installed apps and data inside ${GuestProfile.osName} (your Host Shared Folder and SD card are kept).")
             .setPositiveButton("Reset") { _, _ ->
                 disconnectVnc()
                 EmulatorService.stopVm(this)
@@ -513,7 +513,7 @@ class MainActivity : AppCompatActivity() {
         )
 
         AlertDialog.Builder(this)
-            .setTitle("Logcat — Android 1.6")
+            .setTitle("Logcat — ${GuestProfile.osName}")
             .setView(container)
             .setNeutralButton("Copy") { _, _ ->
                 copyToClipboard("MiniDroid Logcat", lastOutput.ifEmpty { tv.text.toString() })

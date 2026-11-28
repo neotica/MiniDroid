@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+FLAVOR="${1:-donut}"
+FLAVOR_CAP="$(printf '%s' "$FLAVOR" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="$ROOT/android-app"
 IMG="$ROOT/images"
-ASSETS="$APP/app/src/main/assets/images"
+ASSETS="$APP/app/src/$FLAVOR/assets/images"
 KEYMAPS="$APP/app/src/main/assets/keymaps"
 JNILIBS="$APP/app/src/main/jniLibs/arm64-v8a"
 
@@ -21,18 +24,19 @@ if [ ! -f "$KEYMAPS/en-us" ] && [ -f "$ROOT/qemu-11.1.3/pc-bios/keymaps/en-us" ]
 fi
 
 if [ ! -f "$ASSETS/system.img.z" ]; then
-    echo "Packing Android 1.6 images into APK assets..."
+    echo "Packing $FLAVOR guest images into APK assets..."
     cp "$IMG/kernel-qemu" "$IMG/ramdisk.img" "$ASSETS/"
     gzip -6 -c "$IMG/system.img" > "$ASSETS/system.img.z"
     gzip -6 -c "$IMG/userdata.img" > "$ASSETS/userdata.img.z"
 fi
 
 cd "$APP"
+TASK="assemble${FLAVOR_CAP}Debug"
 if [ -x "./gradlew" ]; then
-    ./gradlew assembleDebug
+    ./gradlew "$TASK"
 else
-    gradle assembleDebug
+    gradle "$TASK"
 fi
 
-echo "=== MiniDroid APK ready ==="
-ls -lh "$APP/app/build/outputs/apk/debug/app-debug.apk"
+echo "=== MiniDroid ($FLAVOR) APK ready ==="
+ls -lh "$APP/app/build/outputs/apk/$FLAVOR/debug/app-$FLAVOR-debug.apk"

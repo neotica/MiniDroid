@@ -27,9 +27,9 @@ class EmulatorView @JvmOverloads constructor(
 
     var vncClient: VncClient? = null
 
-    private var bitmap: Bitmap = Bitmap.createBitmap(320, 480, Bitmap.Config.ARGB_8888)
+    private var bitmap: Bitmap = Bitmap.createBitmap(GuestProfile.width, GuestProfile.height, Bitmap.Config.ARGB_8888)
     private val bitmapLock = Any()
-    private val srcRect = Rect(0, 0, 320, 480)
+    private val srcRect = Rect(0, 0, GuestProfile.width, GuestProfile.height)
     private val dstRect = RectF()
     private val paint = Paint().apply {
         isFilterBitmap = true

@@ -1,6 +1,6 @@
 # MiniDroid — Android 1.6 (Donut) ARM Emulator App
 
-Port of the classic **Android 1.6 (Donut) ARM Goldfish** virtual platform onto modern **QEMU 11.1.3** (`arm-softmmu` + `aarch64` TCG JIT), packaged as a self-contained Android app (`id.neotica.minidroid`) with live shared storage for moving and installing `.apk` files.
+Port of the classic **Android 1.6 (Donut) ARM Goldfish** virtual platform onto modern **QEMU 11.1.3** (`arm-softmmu` + `aarch64` TCG JIT), packaged as a multi-flavor Android app (`id.neotica.minidroid.<flavor>`, e.g. `id.neotica.minidroid.donut`) with live shared storage for moving and installing `.apk` files.
 
 ![Android 1.6 Home Screen running on QEMU 11.1.3 Goldfish](docs/home-unlocked.png)
 
@@ -64,14 +64,19 @@ ninja qemu-system-arm
 cd .. && ./scripts/run-mac.sh
 ```
 
-### 3. Build the Android `arm64-v8a` Binary & MiniDroid APK
+### 3. Build the Android `arm64-v8a` Binary & MiniDroid Flavor APK
 ```bash
 ./scripts/fetch-android-deps.sh
 ./scripts/build-android-deps.sh
 ./scripts/build-android-qemu.sh
-./scripts/build-apk.sh
+./scripts/build-apk.sh donut
 ```
-Install the resulting APK on any modern `arm64-v8a` Android 9+ phone:
+Install the resulting flavor APK (`id.neotica.minidroid.donut`) on any modern `arm64-v8a` Android 9+ phone:
 ```bash
-adb install -r android-app/app/build/outputs/apk/debug/app-debug.apk
+adb install -r android-app/app/build/outputs/apk/donut/debug/app-donut-debug.apk
 ```
+
+### Adding Another Guest Flavor (e.g. `gingerbread`)
+1. Uncomment or add a flavor entry in `android-app/app/build.gradle.kts` (`applicationIdSuffix = ".gingerbread"` → `id.neotica.minidroid.gingerbread`, plus its `GUEST_*` BuildConfig fields).
+2. Place that flavor's ROM images (`kernel-qemu`, `ramdisk.img`, `system.img.z`, `userdata.img.z`) in `android-app/app/src/<flavor>/assets/images/`.
+3. Build with `./scripts/build-apk.sh <flavor>` (or `gradle assemble<Flavor>Debug`). Each flavor installs side-by-side with its own app label and package ID while sharing the same QEMU engine and Kotlin codebase.

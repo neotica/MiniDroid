@@ -32,4 +32,4 @@ android-app/**/build/
 android-app/**/*.iml
 android-app/.idea/
 android-app/app/src/main/jniLibs/
-android-app/app/src/main/assets/images/
+android-app/app/src/*/assets/images/

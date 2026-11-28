@@ -11,8 +11,7 @@ object ImageInstaller {
     private const val PREFS = "minidroid_prefs"
     private const val KEY_SDCARD_MB = "sdcard_size_mb"
 
-    // Bump whenever system.img.z changes (v3 = Android 1.6 with HoloMarket v1.5.3 + Home screen shortcut)
-    private const val ROM_VERSION = 3
+    private val romVersion: Int get() = GuestProfile.romVersion
 
     fun imagesDir(context: Context): File = File(context.filesDir, "images").apply { mkdirs() }
     fun keymapsDir(context: Context): File = File(context.filesDir, "keymaps").apply { mkdirs() }
@@ -75,15 +74,15 @@ object ImageInstaller {
             0
         }
         val sysFile = systemFile(context)
-        if (storedRomVersion < ROM_VERSION && sysFile.exists()) {
+        if (storedRomVersion < romVersion && sysFile.exists()) {
             sysFile.delete()
         }
         gunzipAssetIfMissing(context, "$ASSET_DIR/system.img.z", sysFile) {
-            onProgress("Extracting Android 1.6 system image (with HoloMarket)...")
+            onProgress("Extracting ${GuestProfile.osName} system image...")
         }
-        if (storedRomVersion < ROM_VERSION) {
+        if (storedRomVersion < romVersion) {
             try {
-                romVersionFile(context).writeText(ROM_VERSION.toString())
+                romVersionFile(context).writeText(romVersion.toString())
             } catch (_: Exception) {
             }
         }

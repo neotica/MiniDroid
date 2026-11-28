@@ -10,7 +10,7 @@
     <application
         android:allowBackup="false"
         android:icon="@drawable/ic_launcher"
-        android:label="MiniDroid 1.6"
+        android:label="${appLabel}"
         android:roundIcon="@drawable/ic_launcher"
         android:supportsRtl="true"
         android:theme="@style/Theme.MiniDroid"
@@ -38,7 +38,7 @@
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Runs the local QEMU Android 1.6 virtual machine process" />
+                android:value="Runs the local QEMU Android virtual machine process" />
         </service>
     </application>
 </manifest>
