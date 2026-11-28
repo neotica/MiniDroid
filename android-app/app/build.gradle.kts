@@ -11,8 +11,8 @@ android {
         applicationId = "id.neotica.minidroid"
         minSdk = 28
         targetSdk = 34
-        versionCode = 10
-        versionName = "0.2.0"
+        versionCode = 11
+        versionName = "0.2.1"
 
         ndk {
             abiFilters += listOf("arm64-v8a")
