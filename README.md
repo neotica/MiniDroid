@@ -2,8 +2,7 @@
 
 Port of the classic **Android 1.6 (Donut) ARM Goldfish** virtual platform onto modern **QEMU 11.1.3** (`arm-softmmu` + `aarch64` TCG JIT), packaged as a multi-flavor Android app (`id.neotica.minidroid.<flavor>`, e.g. `id.neotica.minidroid.donut`) with live shared storage for moving and installing `.apk` files.
 
-![Android 1.6 Home Screen running on QEMU 11.1.3 Goldfish](docs/home-unlocked.png)
-
+<img src="docs/home-unlocked.png" alt="Android 1.6 Home Screen running on QEMU 11.1.3 Goldfish" width="200" />
 ## Architecture
 
 - **Guest OS:** Official Android 1.6 (`android-1.6_r03`, API 4) ARM Goldfish SDK images (`kernel-qemu`, `ramdisk.img`, `system.img` with **HoloMarket v1.5.3** pre-installed in `/system/app/HoloMarket.apk` and pinned on the stock Home screen next to Browser, 512 MiB `/data` NAND) + resizable **256 MB – 2 GB** sparse FAT32 virtual SD card (`sdcard.img`, default 512 MB) — runs both pure-Java and `armeabi` native NDK `.apk`s.
