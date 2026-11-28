@@ -134,22 +134,23 @@ class MainActivity : AppCompatActivity() {
         primaryNavBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(12, 10, 12, 6)
+            setPadding(dp(8), dp(8), dp(8), dp(6))
         }
-        primaryNavBar.addView(makeNavButton("← Back") { vncClient?.tapKey(0xFF1B) }, navParams())  // Esc -> KEY_BACK
-        primaryNavBar.addView(makeNavButton("⌂ Home") { vncClient?.tapKey(0xFF50) }, navParams())  // Home -> KEY_HOME
-        primaryNavBar.addView(makeNavButton("☰ Menu") { vncClient?.tapKey(0xFFBE) }, navParams())  // F1 -> MENU (also unlocks!)
-        exitFullscreenBtn = makeNavButton("⛶ Exit", "#334155") {
+        primaryNavBar.addView(makePrimaryNavButton("← Back") { vncClient?.tapKey(0xFF1B) }, primaryNavParams())  // Esc -> KEY_BACK
+        primaryNavBar.addView(makePrimaryNavButton("⌂ Home") { vncClient?.tapKey(0xFF50) }, primaryNavParams())  // Home -> KEY_HOME
+        primaryNavBar.addView(makePrimaryNavButton("☰ Menu") { vncClient?.tapKey(0xFFBE) }, primaryNavParams())  // F1 -> MENU (also unlocks!)
+        exitFullscreenBtn = makePrimaryNavButton("⛶ Exit", "#334155") {
             setFullscreen(false)
         }.apply {
             visibility = View.GONE
-            setPadding(18, 16, 18, 16)
+            textSize = 13.5f
+            setPadding(dp(14), dp(14), dp(14), dp(14))
         }
         primaryNavBar.addView(
             exitFullscreenBtn,
-            LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-                marginStart = 4
-                marginEnd = 4
+            LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.MATCH_PARENT).apply {
+                marginStart = dp(4)
+                marginEnd = dp(4)
             }
         )
         bottomContainer.addView(primaryNavBar)
@@ -270,9 +271,9 @@ class MainActivity : AppCompatActivity() {
             emulatorView.layoutParams = lp
         }
         if (enabled) {
-            primaryNavBar.setPadding(8, 6, 8, 10)
+            primaryNavBar.setPadding(dp(6), dp(6), dp(6), dp(8))
         } else {
-            primaryNavBar.setPadding(12, 10, 12, 6)
+            primaryNavBar.setPadding(dp(8), dp(8), dp(8), dp(6))
         }
         applySystemBars(enabled)
     }
@@ -561,9 +562,35 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    private fun primaryNavParams() = LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply {
+        marginStart = dp(4)
+        marginEnd = dp(4)
+    }
+
     private fun navParams() = LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply {
         marginStart = 4
         marginEnd = 4
+    }
+
+    private fun makePrimaryNavButton(
+        label: String,
+        bgHex: String = "#2A313C",
+        onClick: () -> Unit
+    ) = Button(this).apply {
+        text = label
+        isAllCaps = false
+        textSize = 16f
+        setTypeface(null, Typeface.BOLD)
+        setTextColor(Color.parseColor("#F3F6FA"))
+        setBackgroundColor(Color.parseColor(bgHex))
+        setPadding(dp(8), dp(14), dp(8), dp(14))
+        minWidth = 0
+        minimumWidth = 0
+        minHeight = dp(56)
+        minimumHeight = dp(56)
+        setOnClickListener { onClick() }
     }
 
     private fun makeTopButton(label: String, bgHex: String, onClick: () -> Unit) = Button(this).apply {
