@@ -416,10 +416,10 @@ void goldfish_nand_init(GoldfishBus *bus, const char *system_path,
 
     if (system_path && system_path[0]) {
         nand_add_partition(s, "system", system_path,
-                           72ULL * 1024 * 1024, true);
+                           80ULL * 1024 * 1024, true);
     }
     nand_add_partition(s, "userdata", userdata_path,
-                       128ULL * 1024 * 1024, false);
+                       512ULL * 1024 * 1024, false);
     nand_add_partition(s, "cache", cache_path,
                        64ULL * 1024 * 1024, false);
 

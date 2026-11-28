@@ -25,7 +25,6 @@ if [ ! -f "$ASSETS/system.img.z" ]; then
     cp "$IMG/kernel-qemu" "$IMG/ramdisk.img" "$ASSETS/"
     gzip -6 -c "$IMG/system.img" > "$ASSETS/system.img.z"
     gzip -6 -c "$IMG/userdata.img" > "$ASSETS/userdata.img.z"
-    gzip -9 -c "$IMG/sdcard.img" > "$ASSETS/sdcard.img.z"
 fi
 
 cd "$APP"

@@ -36,15 +36,36 @@ class QemudServer(
 ) : SensorEventListener {
 
     companion object {
+        private const val PREFS = "minidroid_prefs"
+        private const val KEY_LOCK_PORTRAIT = "lock_portrait"
+
         private const val BIT_ACCEL = 1 shl 0
         private const val BIT_MAG = 1 shl 1
         private const val BIT_ORIENT = 1 shl 2
         private const val BIT_TEMP = 1 shl 3
         private const val SENSOR_LIST_MASK = BIT_ACCEL or BIT_MAG or BIT_ORIENT // 7
+
+        @Volatile
+        private var activeInstance: QemudServer? = null
+
+        fun isPortraitLocked(context: Context): Boolean {
+            return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getBoolean(KEY_LOCK_PORTRAIT, false)
+        }
+
+        fun setPortraitLocked(context: Context, locked: Boolean) {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_LOCK_PORTRAIT, locked)
+                .apply()
+            activeInstance?.lockPortrait = locked
+        }
     }
 
     @Volatile
     private var running = false
+    @Volatile
+    var lockPortrait: Boolean = isPortraitLocked(context)
     private var serverSocket: ServerSocket? = null
 
     @Volatile
@@ -69,6 +90,8 @@ class QemudServer(
 
     fun start() {
         if (running) return
+        lockPortrait = isPortraitLocked(context)
+        activeInstance = this
         val ss = ServerSocket().apply {
             reuseAddress = true
             bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), port), 4)
@@ -102,6 +125,9 @@ class QemudServer(
 
     fun stop() {
         running = false
+        if (activeInstance === this) {
+            activeInstance = null
+        }
         unregisterHostSensors()
         scheduler?.shutdownNow()
         scheduler = null
@@ -252,10 +278,19 @@ class QemudServer(
                 val oa: Float
                 val op: Float
                 val or: Float
-                synchronized(sensorLock) {
-                    ax = accel[0]; ay = accel[1]; az = accel[2]
-                    mx = mag[0]; my = mag[1]; mz = mag[2]
-                    oa = orient[0]; op = orient[1]; or = orient[2]
+                if (lockPortrait) {
+                    // Hold steady upright portrait gravity so Android 1.6 never auto-rotates
+                    ax = 0f; ay = 8.495f; az = 4.905f
+                    oa = 0f; op = -30f; or = 0f
+                    synchronized(sensorLock) {
+                        mx = mag[0]; my = mag[1]; mz = mag[2]
+                    }
+                } else {
+                    synchronized(sensorLock) {
+                        ax = accel[0]; ay = accel[1]; az = accel[2]
+                        mx = mag[0]; my = mag[1]; mz = mag[2]
+                        oa = orient[0]; op = orient[1]; or = orient[2]
+                    }
                 }
                 if ((mask and BIT_ACCEL) != 0) {
                     val line = String.format(Locale.US, "acceleration:%.4f:%.4f:%.4f", ax, ay, az)

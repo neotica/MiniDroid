@@ -8,9 +8,38 @@ import java.util.zip.GZIPInputStream
 object ImageInstaller {
     private const val ASSET_DIR = "images"
     private const val KEYMAP_DIR = "keymaps"
+    private const val PREFS = "minidroid_prefs"
+    private const val KEY_SDCARD_MB = "sdcard_size_mb"
+
+    // Bump whenever system.img.z changes (v2 = Android 1.6 with built-in HoloMarket v1.5.2)
+    private const val ROM_VERSION = 2
 
     fun imagesDir(context: Context): File = File(context.filesDir, "images").apply { mkdirs() }
     fun keymapsDir(context: Context): File = File(context.filesDir, "keymaps").apply { mkdirs() }
+    private fun romVersionFile(context: Context) = File(imagesDir(context), ".rom_version")
+
+    fun getConfiguredSdCardMb(context: Context): Int {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getInt(KEY_SDCARD_MB, Fat32Formatter.DEFAULT_SIZE_MB)
+            .coerceIn(256, 2048)
+    }
+
+    fun getCurrentSdCardSizeMb(context: Context): Int {
+        val sd = sdcardFile(context)
+        if (sd.exists() && sd.length() > 0L) {
+            return ((sd.length() + (512L * 1024L)) / (1024L * 1024L)).toInt().coerceAtLeast(1)
+        }
+        return getConfiguredSdCardMb(context)
+    }
+
+    fun recreateSdCard(context: Context, sizeMb: Int) {
+        val clamped = sizeMb.coerceIn(256, 2048)
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putInt(KEY_SDCARD_MB, clamped)
+            .apply()
+        Fat32Formatter.createFat32Image(sdcardFile(context), clamped)
+    }
 
     fun defaultSharedDir(context: Context): File {
         val base = context.getExternalFilesDir(null) ?: context.filesDir
@@ -40,14 +69,32 @@ object ImageInstaller {
         copyAssetIfMissing(context, "$ASSET_DIR/ramdisk.img", ramdiskFile(context)) {
             onProgress("Extracting ramdisk...")
         }
-        gunzipAssetIfMissing(context, "$ASSET_DIR/system.img.z", systemFile(context)) {
-            onProgress("Extracting Android 1.6 system image (first run)...")
+        val storedRomVersion = try {
+            romVersionFile(context).takeIf { it.exists() }?.readText()?.trim()?.toIntOrNull() ?: 0
+        } catch (_: Exception) {
+            0
+        }
+        val sysFile = systemFile(context)
+        if (storedRomVersion < ROM_VERSION && sysFile.exists()) {
+            sysFile.delete()
+        }
+        gunzipAssetIfMissing(context, "$ASSET_DIR/system.img.z", sysFile) {
+            onProgress("Extracting Android 1.6 system image (with HoloMarket)...")
+        }
+        if (storedRomVersion < ROM_VERSION) {
+            try {
+                romVersionFile(context).writeText(ROM_VERSION.toString())
+            } catch (_: Exception) {
+            }
         }
         gunzipAssetIfMissing(context, "$ASSET_DIR/userdata.img.z", userdataFile(context)) {
-            onProgress("Initializing userdata partition...")
+            onProgress("Initializing 512 MB internal storage...")
         }
-        gunzipAssetIfMissing(context, "$ASSET_DIR/sdcard.img.z", sdcardFile(context)) {
-            onProgress("Creating 64 MB virtual SD card...")
+        val sd = sdcardFile(context)
+        if (!sd.exists() || sd.length() == 0L) {
+            val sizeMb = getConfiguredSdCardMb(context)
+            onProgress("Creating ${sizeMb} MB virtual SD card...")
+            Fat32Formatter.createFat32Image(sd, sizeMb)
         }
         defaultSharedDir(context)
     }

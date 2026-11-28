@@ -3,6 +3,7 @@ package id.neotica.minidroid
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
@@ -38,6 +39,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        applyPortraitLock(QemudServer.isPortraitLocked(this))
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -177,8 +179,20 @@ class MainActivity : AppCompatActivity() {
         imm?.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
     }
 
+    private fun applyPortraitLock(locked: Boolean) {
+        requestedOrientation = if (locked) {
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+    }
+
     private fun showPowerMenu() {
+        val portraitLocked = QemudServer.isPortraitLocked(this)
+        val sdMb = ImageInstaller.getCurrentSdCardSizeMb(this)
         val items = arrayOf(
+            if (portraitLocked) "Auto-Rotation: OFF (Portrait Locked)" else "Auto-Rotation: ON (Lock Portrait)",
+            "Storage / SD Card Size ($sdMb MB)",
             "Logcat (AndroidRuntime)",
             "Power Button (Wake / Sleep)",
             "Guest Volume Up",
@@ -193,24 +207,80 @@ class MainActivity : AppCompatActivity() {
             .setTitle("MiniDroid 1.6 Controls")
             .setItems(items) { _, which ->
                 when (which) {
-                    0 -> showLogcatDialog()
-                    1 -> vncClient?.tapKey(0xFFC4) // F7 -> KEY_POWER
-                    2 -> vncClient?.tapKey(0xFFC6) // F9 -> KEY_VOLUMEUP
-                    3 -> vncClient?.tapKey(0xFFC5) // F8 -> KEY_VOLUMEDOWN
-                    4 -> vncClient?.tapKey(0xFFC3) // F6 -> KEY_CAMERA
-                    5 -> {
+                    0 -> {
+                        val nextLocked = !portraitLocked
+                        QemudServer.setPortraitLocked(this, nextLocked)
+                        applyPortraitLock(nextLocked)
+                        Toast.makeText(
+                            this,
+                            if (nextLocked) "Portrait locked (auto-rotation OFF)" else "Auto-rotation ON",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    1 -> showStorageDialog()
+                    2 -> showLogcatDialog()
+                    3 -> vncClient?.tapKey(0xFFC4) // F7 -> KEY_POWER
+                    4 -> vncClient?.tapKey(0xFFC6) // F9 -> KEY_VOLUMEUP
+                    5 -> vncClient?.tapKey(0xFFC5) // F8 -> KEY_VOLUMEDOWN
+                    6 -> vncClient?.tapKey(0xFFC3) // F6 -> KEY_CAMERA
+                    7 -> {
                         disconnectVnc()
                         EmulatorService.restartVm(this)
                     }
-                    6 -> showLogsDialog()
-                    7 -> confirmFactoryReset()
-                    8 -> {
+                    8 -> showLogsDialog()
+                    9 -> confirmFactoryReset()
+                    10 -> {
                         disconnectVnc()
                         EmulatorService.stopVm(this)
                         finish()
                     }
                 }
             }
+            .show()
+    }
+
+    private fun showStorageDialog() {
+        val currentSdMb = ImageInstaller.getCurrentSdCardSizeMb(this)
+        val sizes = Fat32Formatter.SUPPORTED_SIZES_MB
+        val labels = sizes.map { mb ->
+            val nice = if (mb >= 1024) "${mb / 1024} GB ($mb MB)" else "$mb MB"
+            if (mb == currentSdMb) "$nice  (current)" else nice
+        }.toTypedArray()
+
+        AlertDialog.Builder(this)
+            .setTitle("Virtual SD Card Size (Internal /data: 512 MB)")
+            .setItems(labels) { _, which ->
+                val chosenMb = sizes[which]
+                val chosenLabel = if (chosenMb >= 1024) "${chosenMb / 1024} GB" else "$chosenMb MB"
+                AlertDialog.Builder(this)
+                    .setTitle("Resize SD Card to $chosenLabel?")
+                    .setMessage(
+                        "Creates a fresh $chosenLabel FAT32 virtual SD card and reboots Android 1.6.\n\n" +
+                            "Internal storage (/data, 512 MB), installed apps, and your Host Shared Folder are kept. " +
+                            "Existing files stored inside /sdcard will be wiped."
+                    )
+                    .setPositiveButton("Resize & Reboot") { _, _ ->
+                        disconnectVnc()
+                        EmulatorService.stopVm(this)
+                        statusText.text = "Creating $chosenLabel SD card..."
+                        thread(name = "ResizeSdCard") {
+                            var waited = 0
+                            while (EmulatorService.isRunning && waited < 2500) {
+                                Thread.sleep(100)
+                                waited += 100
+                            }
+                            Thread.sleep(300)
+                            ImageInstaller.recreateSdCard(this, chosenMb)
+                            runOnUiThread {
+                                Toast.makeText(this, "SD card resized to $chosenLabel", Toast.LENGTH_SHORT).show()
+                            }
+                            EmulatorService.startVm(this)
+                        }
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+            .setNegativeButton("Close", null)
             .show()
     }
 
