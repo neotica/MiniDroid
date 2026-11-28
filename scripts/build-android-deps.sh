@@ -6,18 +6,35 @@ DEPS="$ROOT/deps-android"
 TAR="$DEPS/tarballs"
 WORK="$DEPS/work"
 PREFIX="$DEPS/prefix"
-NDK="${ANDROID_NDK_HOME:-$HOME/Library/Android/sdk/ndk/27.1.12297006}"
-TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/darwin-x86_64"
-API=28
 
-export PATH="/opt/homebrew/bin:$TOOLCHAIN/bin:$PATH"
+case "$(uname -s)" in
+    Darwin) HOST_TAG="darwin-x86_64" ;;
+    Linux)  HOST_TAG="linux-x86_64" ;;
+    *)      echo "Unsupported host OS: $(uname -s)" >&2; exit 1 ;;
+esac
+
+if [ -d /opt/homebrew/bin ]; then
+    export PATH="/opt/homebrew/bin:$PATH"
+fi
+
+NDK="${ANDROID_NDK_HOME:-${ANDROID_NDK_ROOT:-${ANDROID_NDK_LATEST_HOME:-$HOME/Library/Android/sdk/ndk/27.1.12297006}}}"
+TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/$HOST_TAG"
+if [ ! -d "$TOOLCHAIN" ]; then
+    echo "Android NDK toolchain not found at: $TOOLCHAIN" >&2
+    echo "Set ANDROID_NDK_HOME to an installed Android NDK (r27+)." >&2
+    exit 1
+fi
+API=28
+JOBS="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)"
+
+export PATH="$TOOLCHAIN/bin:$PATH"
 export CC="$TOOLCHAIN/bin/aarch64-linux-android${API}-clang"
 export CXX="$TOOLCHAIN/bin/aarch64-linux-android${API}-clang++"
 export AR="$TOOLCHAIN/bin/llvm-ar"
 export RANLIB="$TOOLCHAIN/bin/llvm-ranlib"
 export STRIP="$TOOLCHAIN/bin/llvm-strip"
 export NM="$TOOLCHAIN/bin/llvm-nm"
-export PKG_CONFIG="/opt/homebrew/bin/pkg-config"
+export PKG_CONFIG="${PKG_CONFIG:-$(command -v pkg-config)}"
 export PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig"
 export PKG_CONFIG_PATH=""
 
@@ -131,7 +148,7 @@ if [ ! -f "$PREFIX/lib/libffi.a" ]; then
             --host=aarch64-linux-android \
             --prefix="$PREFIX" \
             --enable-static --disable-shared --disable-docs
-        make -j8
+        make -j"$JOBS"
         make install
     )
 fi
@@ -148,7 +165,7 @@ if [ ! -f "$PREFIX/lib/libpcre2-8.a" ]; then
             --prefix="$PREFIX" \
             --enable-static --disable-shared \
             --enable-pcre2-8 --disable-jit --disable-pcre2grep-callout
-        make -j8
+        make -j"$JOBS"
         make install
     )
 fi

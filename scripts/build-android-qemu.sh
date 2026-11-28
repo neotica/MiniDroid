@@ -9,22 +9,48 @@ SRC="$BUILD_ROOT/qemu-11.1.3"
 OUT="$BUILD_ROOT/build"
 DIST="$BUILD_ROOT/out/arm64-v8a"
 
-NDK="${ANDROID_NDK_HOME:-$HOME/Library/Android/sdk/ndk/27.1.12297006}"
-TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/darwin-x86_64"
+case "$(uname -s)" in
+    Darwin) HOST_TAG="darwin-x86_64" ;;
+    Linux)  HOST_TAG="linux-x86_64" ;;
+    *)      echo "Unsupported host OS: $(uname -s)" >&2; exit 1 ;;
+esac
+
+if [ -d /opt/homebrew/bin ]; then
+    export PATH="/opt/homebrew/bin:$PATH"
+fi
+
+NDK="${ANDROID_NDK_HOME:-${ANDROID_NDK_ROOT:-${ANDROID_NDK_LATEST_HOME:-$HOME/Library/Android/sdk/ndk/27.1.12297006}}}"
+TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/$HOST_TAG"
+if [ ! -d "$TOOLCHAIN" ]; then
+    echo "Android NDK toolchain not found at: $TOOLCHAIN" >&2
+    echo "Set ANDROID_NDK_HOME to an installed Android NDK (r27+)." >&2
+    exit 1
+fi
 API=28
 
-export PATH="$BUILD_ROOT/bin:/opt/homebrew/bin:$TOOLCHAIN/bin:$PATH"
+export PATH="$BUILD_ROOT/bin:$TOOLCHAIN/bin:$PATH"
 CC="$TOOLCHAIN/bin/aarch64-linux-android${API}-clang"
 CXX="$TOOLCHAIN/bin/aarch64-linux-android${API}-clang++"
 AR="$TOOLCHAIN/bin/llvm-ar"
 STRIP="$TOOLCHAIN/bin/llvm-strip"
 READELF="$TOOLCHAIN/bin/llvm-readelf"
 
-export PKG_CONFIG="/opt/homebrew/bin/pkg-config"
+PKG_CONFIG_BIN="${PKG_CONFIG:-$(command -v pkg-config)}"
+PYTHON_BIN="${PYTHON:-$(command -v python3)}"
+HOST_CC_BIN="${HOST_CC:-$(command -v cc)}"
+
+export PKG_CONFIG="$PKG_CONFIG_BIN"
 export PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig"
 export PKG_CONFIG_PATH=""
 
 mkdir -p "$BUILD_ROOT" "$DIST"
+
+# 0. Fetch QEMU 11.1.3 tarball if missing
+if [ ! -f "$ROOT/qemu-11.1.3.tar.xz" ]; then
+    echo "=== Downloading QEMU 11.1.3 tarball ==="
+    curl -fSL -o "$ROOT/qemu-11.1.3.tar.xz.tmp" "https://download.qemu.org/qemu-11.1.3.tar.xz"
+    mv "$ROOT/qemu-11.1.3.tar.xz.tmp" "$ROOT/qemu-11.1.3.tar.xz"
+fi
 
 # 1. Prepare clean patched QEMU source tree for Android
 if [ ! -d "$SRC" ]; then
@@ -105,7 +131,7 @@ if [ ! -f "$OUT/build.ninja" ]; then
 #!/bin/sh
 export PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig"
 export PKG_CONFIG_PATH=""
-exec /opt/homebrew/bin/pkg-config --static "\$@"
+exec "$PKG_CONFIG_BIN" --static "\$@"
 EOF
     chmod +x "$BUILD_ROOT/bin/aarch64-linux-android-pkg-config"
 
@@ -114,12 +140,12 @@ EOF
         PATH="$BUILD_ROOT/bin:$PATH" \
         PKG_CONFIG="$BUILD_ROOT/bin/aarch64-linux-android-pkg-config" \
         "$SRC/configure" \
-            --python=/usr/bin/python3 \
+            --python="$PYTHON_BIN" \
             --disable-download \
             --cross-prefix="aarch64-linux-android-" \
             --cc="$CC" \
             --cxx="$CXX" \
-            --host-cc="/usr/bin/cc" \
+            --host-cc="$HOST_CC_BIN" \
             --target-list=arm-softmmu \
             --enable-pie \
             --enable-tcg \
