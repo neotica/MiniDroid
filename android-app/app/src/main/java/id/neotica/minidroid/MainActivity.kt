@@ -7,8 +7,11 @@ import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
+import android.text.TextUtils
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup.LayoutParams
+import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.LinearLayout
@@ -17,12 +20,25 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import kotlin.concurrent.thread
 
 class MainActivity : AppCompatActivity() {
 
+    companion object {
+        private const val PREFS = "minidroid_prefs"
+        private const val KEY_FULLSCREEN = "fullscreen_mode"
+    }
+
+    private lateinit var topBar: LinearLayout
     private lateinit var statusText: TextView
     private lateinit var emulatorView: EmulatorView
+    private lateinit var primaryNavBar: LinearLayout
+    private lateinit var secondaryNavBar: LinearLayout
+    private lateinit var exitFullscreenBtn: Button
+    private var isFullscreen = false
     private var vncClient: VncClient? = null
     private var adbPollerRunning = false
 
@@ -47,34 +63,51 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Top toolbar
-        val topBar = LinearLayout(this).apply {
+        topBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundColor(Color.parseColor("#1A1E24"))
-            setPadding(20, 16, 16, 16)
+            setPadding(16, 14, 12, 14)
         }
 
         val titleCol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         titleCol.addView(TextView(this).apply {
             text = "MiniDroid 1.6"
-            textSize = 15f
+            textSize = 14f
             setTypeface(null, Typeface.BOLD)
             setTextColor(Color.parseColor("#9CCC65"))
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
         })
         statusText = TextView(this).apply {
             text = "Starting..."
-            textSize = 11f
+            textSize = 10.5f
             setTextColor(Color.parseColor("#9AA4B2"))
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
         }
         titleCol.addView(statusText)
 
-        topBar.addView(titleCol, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+        topBar.addView(
+            titleCol,
+            LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginEnd = 8
+            }
+        )
+        topBar.addView(
+            makeTopButton("Logcat", "#334155") {
+                showLogcatDialog()
+            },
+            LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+                marginEnd = 8
+            }
+        )
         topBar.addView(
             makeTopButton("APKs / Files", "#4E7A28") {
                 startActivity(Intent(this, SharedStorageActivity::class.java))
             },
             LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-                marginEnd = 10
+                marginEnd = 8
             }
         )
         topBar.addView(makeTopButton("⋮", "#2B313B") { showPowerMenu() })
@@ -90,21 +123,53 @@ class MainActivity : AppCompatActivity() {
             }
         )
 
-        // Bottom classic Android 1.6 hardware keys bar
-        val navBar = LinearLayout(this).apply {
+        // Bottom controls container:
+        // Row 1 (right under the emulator screen): Back, Home, Menu (+ Exit Fullscreen when fullscreen)
+        // Row 2 (below Row 1): Search, Keys, Fullscreen toggle
+        val bottomContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#1A1E24"))
+        }
+
+        primaryNavBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setBackgroundColor(Color.parseColor("#1A1E24"))
-            setPadding(12, 12, 12, 18)
+            setPadding(12, 10, 12, 6)
         }
-        navBar.addView(makeNavButton("← Back") { vncClient?.tapKey(0xFF1B) }, navParams())   // Esc -> KEY_BACK
-        navBar.addView(makeNavButton("⌂ Home") { vncClient?.tapKey(0xFF50) }, navParams())   // Home -> KEY_HOME
-        navBar.addView(makeNavButton("☰ Menu") { vncClient?.tapKey(0xFFBE) }, navParams())   // F1 -> MENU (also unlocks!)
-        navBar.addView(makeNavButton("⌕ Search") { vncClient?.tapKey(0xFFC2) }, navParams()) // F5 -> KEY_SEARCH
-        navBar.addView(makeNavButton("⌨ Keys") { toggleSoftKeyboard() }, navParams())
-        root.addView(navBar)
+        primaryNavBar.addView(makeNavButton("← Back") { vncClient?.tapKey(0xFF1B) }, navParams())  // Esc -> KEY_BACK
+        primaryNavBar.addView(makeNavButton("⌂ Home") { vncClient?.tapKey(0xFF50) }, navParams())  // Home -> KEY_HOME
+        primaryNavBar.addView(makeNavButton("☰ Menu") { vncClient?.tapKey(0xFFBE) }, navParams())  // F1 -> MENU (also unlocks!)
+        exitFullscreenBtn = makeNavButton("⛶ Exit", "#334155") {
+            setFullscreen(false)
+        }.apply {
+            visibility = View.GONE
+            setPadding(18, 16, 18, 16)
+        }
+        primaryNavBar.addView(
+            exitFullscreenBtn,
+            LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+                marginStart = 4
+                marginEnd = 4
+            }
+        )
+        bottomContainer.addView(primaryNavBar)
+
+        secondaryNavBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(12, 4, 12, 16)
+        }
+        secondaryNavBar.addView(makeNavButton("⌕ Search", "#20262E") { vncClient?.tapKey(0xFFC2) }, navParams()) // F5 -> KEY_SEARCH
+        secondaryNavBar.addView(makeNavButton("⌨ Keys", "#20262E") { toggleSoftKeyboard() }, navParams())
+        secondaryNavBar.addView(makeNavButton("⛶ Fullscreen", "#20262E") { setFullscreen(true) }, navParams())
+        bottomContainer.addView(secondaryNavBar)
+
+        root.addView(bottomContainer)
 
         setContentView(root)
+
+        val savedFullscreen = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(KEY_FULLSCREEN, false)
+        setFullscreen(savedFullscreen, persist = false)
 
         EmulatorService.addStateListener(stateListener)
         if (!EmulatorService.isRunning) {
@@ -113,6 +178,13 @@ class MainActivity : AppCompatActivity() {
             connectVnc()
         }
         startAdbStatusPoller()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && isFullscreen) {
+            applySystemBars(true)
+        }
     }
 
     override fun onDestroy() {
@@ -179,6 +251,51 @@ class MainActivity : AppCompatActivity() {
         imm?.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
     }
 
+    private fun setFullscreen(enabled: Boolean, persist: Boolean = true) {
+        isFullscreen = enabled
+        if (persist) {
+            getSharedPreferences(PREFS, MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_FULLSCREEN, enabled)
+                .apply()
+        }
+        topBar.visibility = if (enabled) View.GONE else View.VISIBLE
+        secondaryNavBar.visibility = if (enabled) View.GONE else View.VISIBLE
+        exitFullscreenBtn.visibility = if (enabled) View.VISIBLE else View.GONE
+
+        val lp = emulatorView.layoutParams as? LinearLayout.LayoutParams
+        if (lp != null) {
+            lp.topMargin = if (enabled) 0 else 8
+            lp.bottomMargin = if (enabled) 0 else 8
+            emulatorView.layoutParams = lp
+        }
+        if (enabled) {
+            primaryNavBar.setPadding(8, 6, 8, 10)
+        } else {
+            primaryNavBar.setPadding(12, 10, 12, 6)
+        }
+        applySystemBars(enabled)
+    }
+
+    private fun applySystemBars(hide: Boolean) {
+        val attrs = window.attributes
+        attrs.layoutInDisplayCutoutMode = if (hide) {
+            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        } else {
+            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+        }
+        window.attributes = attrs
+
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        if (hide) {
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller.show(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+
     private fun applyPortraitLock(locked: Boolean) {
         requestedOrientation = if (locked) {
             ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
@@ -191,6 +308,7 @@ class MainActivity : AppCompatActivity() {
         val portraitLocked = QemudServer.isPortraitLocked(this)
         val sdMb = ImageInstaller.getCurrentSdCardSizeMb(this)
         val items = arrayOf(
+            if (isFullscreen) "Fullscreen: ON (Exit Fullscreen)" else "Fullscreen: OFF (Enter Fullscreen)",
             if (portraitLocked) "Auto-Rotation: OFF (Portrait Locked)" else "Auto-Rotation: ON (Lock Portrait)",
             "Storage / SD Card Size ($sdMb MB)",
             "Logcat (AndroidRuntime)",
@@ -207,7 +325,8 @@ class MainActivity : AppCompatActivity() {
             .setTitle("MiniDroid 1.6 Controls")
             .setItems(items) { _, which ->
                 when (which) {
-                    0 -> {
+                    0 -> setFullscreen(!isFullscreen)
+                    1 -> {
                         val nextLocked = !portraitLocked
                         QemudServer.setPortraitLocked(this, nextLocked)
                         applyPortraitLock(nextLocked)
@@ -217,19 +336,19 @@ class MainActivity : AppCompatActivity() {
                             Toast.LENGTH_SHORT
                         ).show()
                     }
-                    1 -> showStorageDialog()
-                    2 -> showLogcatDialog()
-                    3 -> vncClient?.tapKey(0xFFC4) // F7 -> KEY_POWER
-                    4 -> vncClient?.tapKey(0xFFC6) // F9 -> KEY_VOLUMEUP
-                    5 -> vncClient?.tapKey(0xFFC5) // F8 -> KEY_VOLUMEDOWN
-                    6 -> vncClient?.tapKey(0xFFC3) // F6 -> KEY_CAMERA
-                    7 -> {
+                    2 -> showStorageDialog()
+                    3 -> showLogcatDialog()
+                    4 -> vncClient?.tapKey(0xFFC4) // F7 -> KEY_POWER
+                    5 -> vncClient?.tapKey(0xFFC6) // F9 -> KEY_VOLUMEUP
+                    6 -> vncClient?.tapKey(0xFFC5) // F8 -> KEY_VOLUMEDOWN
+                    7 -> vncClient?.tapKey(0xFFC3) // F6 -> KEY_CAMERA
+                    8 -> {
                         disconnectVnc()
                         EmulatorService.restartVm(this)
                     }
-                    8 -> showLogsDialog()
-                    9 -> confirmFactoryReset()
-                    10 -> {
+                    9 -> showLogsDialog()
+                    10 -> confirmFactoryReset()
+                    11 -> {
                         disconnectVnc()
                         EmulatorService.stopVm(this)
                         finish()
@@ -450,22 +569,30 @@ class MainActivity : AppCompatActivity() {
     private fun makeTopButton(label: String, bgHex: String, onClick: () -> Unit) = Button(this).apply {
         text = label
         isAllCaps = false
-        textSize = 12f
+        textSize = 11.5f
         setTextColor(Color.WHITE)
         setBackgroundColor(Color.parseColor(bgHex))
-        setPadding(20, 10, 20, 10)
+        setPadding(14, 10, 14, 10)
+        minWidth = 0
+        minimumWidth = 0
         minHeight = 0
         minimumHeight = 0
         setOnClickListener { onClick() }
     }
 
-    private fun makeNavButton(label: String, onClick: () -> Unit) = Button(this).apply {
+    private fun makeNavButton(
+        label: String,
+        bgHex: String = "#252B34",
+        onClick: () -> Unit
+    ) = Button(this).apply {
         text = label
         isAllCaps = false
-        textSize = 11.5f
+        textSize = 12f
         setTextColor(Color.parseColor("#E6EDF3"))
-        setBackgroundColor(Color.parseColor("#252B34"))
-        setPadding(4, 18, 4, 18)
+        setBackgroundColor(Color.parseColor(bgHex))
+        setPadding(8, 16, 8, 16)
+        minWidth = 0
+        minimumWidth = 0
         minHeight = 0
         minimumHeight = 0
         setOnClickListener { onClick() }

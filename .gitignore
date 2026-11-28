@@ -1,5 +1,6 @@
-# macOS
+# macOS & IDE
 .DS_Store
+.idea/
 
 # Upstream QEMU source & tarballs (fetched locally)
 qemu-*/

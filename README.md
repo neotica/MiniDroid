@@ -6,7 +6,7 @@ Port of the classic **Android 1.6 (Donut) ARM Goldfish** virtual platform onto m
 
 ## Architecture
 
-- **Guest OS:** Official Android 1.6 (`android-1.6_r03`, API 4) ARM Goldfish SDK images (`kernel-qemu`, `ramdisk.img`, `system.img` with **HoloMarket v1.5.2** pre-installed in `/system/app/HoloMarket.apk`, 512 MiB `/data` NAND) + resizable **256 MB – 2 GB** sparse FAT32 virtual SD card (`sdcard.img`, default 512 MB) — runs both pure-Java and `armeabi` native NDK `.apk`s.
+- **Guest OS:** Official Android 1.6 (`android-1.6_r03`, API 4) ARM Goldfish SDK images (`kernel-qemu`, `ramdisk.img`, `system.img` with **HoloMarket v1.5.3** pre-installed in `/system/app/HoloMarket.apk` and pinned on the stock Home screen next to Browser, 512 MiB `/data` NAND) + resizable **256 MB – 2 GB** sparse FAT32 virtual SD card (`sdcard.img`, default 512 MB) — runs both pure-Java and `armeabi` native NDK `.apk`s.
 - **Goldfish Virtual Board (`goldfish/hw/arm/goldfish/`):** Clean modern QEMU 11 port of the Goldfish ARM926EJ-S platform (`-M goldfish`, `board_id=1441`):
   - `goldfish_pic` (32-IRQ controller) + `goldfish_pdev_bus` (platform device bus)
   - `goldfish_timer` + `goldfish_rtc`
@@ -21,7 +21,7 @@ Port of the classic **Android 1.6 (Donut) ARM Goldfish** virtual platform onto m
   - Cross-compiled directly against Android NDK 27 (`aarch64-linux-android28`) with static `glib2`, `pixman`, `libslirp`, `libfdt`, `pcre2`, `libffi`, and Termux's `setjmp-aarch64` shim into a single self-contained 12 MB `libqemu.so` (linking only Android system `libc`, `libm`, `libdl`, `libz`).
 - **MiniDroid Android App (`android-app/`):**
   - Runs `libqemu.so` in a foreground service (`useLegacyPackaging = true` for Android 10+ W^X compatibility).
-  - Pure-Kotlin RFB 3.8 VNC client (`VncClient.kt` + `EmulatorView.kt`) for crisp 320×480 display, 1:1 touch input, soft keyboard bridge, and classic Android 1.6 hardware buttons (**Back / Home / Menu / Search / Keyboard**).
+  - Pure-Kotlin RFB 3.8 VNC client (`VncClient.kt` + `EmulatorView.kt`) for crisp 320×480 display, 1:1 touch input, soft keyboard bridge, **Fullscreen mode**, quick top-bar **Logcat** button, and two-row classic Android 1.6 hardware keys (**Back / Home / Menu** right below the screen, **Search / Keys / Fullscreen** beneath).
   - **Live Internet, Audio & Motion Sensors (`QemudServer.kt`, `AudioPlaybackServer.kt`, Android `libslirp` DNS patch):**
     - Multiplexes Android 1.6's `qemud` (`/dev/ttyS1`, `android.qemud=ttyS1`) for **3G Mobile Data** (`gsm` + `%CTZV` clock sync), live host **Accelerometer / Magnetic Field / Orientation** (`sensors` via Android `SensorManager`, with an in-app **Auto-Rotation / Portrait Lock** toggle), `boot-properties`, and `hw-control`.
     - Streams 44.1 kHz stereo PCM audio from Goldfish `/dev/eac` straight into Android's `AudioTrack`.

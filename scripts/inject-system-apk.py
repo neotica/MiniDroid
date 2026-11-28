@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """
-Append an APK directly into /system/app/<name>.apk inside an Android 1.6 (Donut)
-YAFFS2 system.img (2048-byte pages + 64-byte OOB).
+Customize an Android 1.6 (Donut) YAFFS2 system.img (2048-byte pages + 64-byte OOB):
+  1. Append an APK directly into /system/app/<name>.apk
+  2. Optionally append a one-time Launcher shortcut hook to /system/etc/init.goldfish.sh
+     so the bundled app appears on the stock Home screen right next to Browser.
 
 Usage:
-    python3 scripts/inject-system-apk.py images/system-stock.img images/HoloMarket-v1.5.2.apk images/system.img HoloMarket.apk
+    python3 scripts/inject-system-apk.py images/system-stock.img images/HoloMarket-v1.5.3.apk images/system.img HoloMarket.apk
 """
 import os
 import struct
@@ -15,11 +17,53 @@ PAGE_OOB = 64
 PAGE_TOTAL = PAGE_DATA + PAGE_OOB
 SEQ_NUMBER = 0x1000
 
+PIN_HOLOMARKET_HOOK = """
+# Pin built-in HoloMarket on stock Home screen right next to Browser (screen 1, cellX=3, cellY=3)
+if ls /data/misc/.holomarket_pinned >/dev/null 2>&1; then
+    :
+else
+(
+    DB=/data/data/com.android.launcher/databases/launcher.db
+    for t in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
+        if ls "$DB" >/dev/null 2>&1; then
+            cnt=`sqlite3 "$DB" "SELECT count(*) FROM favorites;" 2>/dev/null`
+            case "$cnt" in
+                ""|0) ;;
+                *)
+                    has=`sqlite3 "$DB" "SELECT count(*) FROM favorites WHERE intent LIKE '%id.neotica.holomarket%';" 2>/dev/null`
+                    case "$has" in
+                        0)
+                            cx=3; cy=3
+                            occ=`sqlite3 "$DB" "SELECT count(*) FROM favorites WHERE container=-100 AND screen=1 AND cellX=3 AND cellY=3;" 2>/dev/null`
+                            case "$occ" in
+                                0) ;;
+                                *) cx=1; cy=2 ;;
+                            esac
+                            sqlite3 "$DB" "INSERT INTO favorites (title,intent,container,screen,cellX,cellY,spanX,spanY,itemType) VALUES ('HoloMarket','#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;launchFlags=0x10200000;component=id.neotica.holomarket/.feature.home.ui.MainActivity;end',-100,1,$cx,$cy,1,1,0);" 2>/dev/null
+                            ps | while read u p rest; do
+                                case "$rest" in
+                                    *android.process.acore*) kill "$p" 2>/dev/null ;;
+                                esac
+                            done
+                            ;;
+                    esac
+                    echo 1 > /data/misc/.holomarket_pinned
+                    break
+                    ;;
+            esac
+        fi
+        sleep 2
+    done
+) &
+fi
+"""
+
 
 def find_app_dir_and_template(img: bytes):
     n_pages = len(img) // PAGE_TOTAL
     app_oid = None
     template_hdr = None
+    init_sh_oid = None
     max_oid = 0
 
     for p in range(n_pages):
@@ -35,19 +79,74 @@ def find_app_dir_and_template(img: bytes):
                 app_oid = oid
             elif obj_type == 1 and app_oid is not None and parent_id == app_oid and template_hdr is None:
                 template_hdr = bytearray(img[off : off + PAGE_DATA])
+            elif obj_type == 1 and name == "init.goldfish.sh":
+                init_sh_oid = oid
 
     if app_oid is None or template_hdr is None:
         raise RuntimeError("Could not locate /app directory or template file header in YAFFS2 image")
-    return app_oid, template_hdr, max_oid
+    return app_oid, template_hdr, init_sh_oid, max_oid
 
 
-def inject_apk(src_img_path: str, apk_path: str, out_img_path: str, target_name: str):
+def patch_init_goldfish_sh(out: bytearray, init_sh_oid: int, hook_text: str):
+    n_pages = len(out) // PAGE_TOTAL
+    hdr_page = None
+    chunks = {}
+    orig_size = 0
+
+    for p in range(n_pages):
+        off = p * PAGE_TOTAL
+        seq, oid, cid, nbytes = struct.unpack_from("<IIII", out, off + PAGE_DATA)
+        if oid == init_sh_oid:
+            if cid == 0 and nbytes == 0xFFFF:
+                hdr_page = p
+                orig_size = struct.unpack_from("<I", out, off + 0x124)[0]
+            elif cid > 0:
+                chunks[cid] = (p, bytes(out[off : off + nbytes]))
+
+    if hdr_page is None:
+        raise RuntimeError("Could not locate init.goldfish.sh header page")
+
+    orig_script = b"".join(chunks[k][1] for k in sorted(chunks))[:orig_size]
+    if b".holomarket_pinned" in orig_script:
+        return
+
+    new_script = orig_script.rstrip(b"\n") + b"\n" + hook_text.encode("ascii")
+    # Pad to the next 64-page YAFFS2 erase block boundary so every erase block has a uniform seqNumber
+    pages_now = len(out) // PAGE_TOTAL
+    rem = pages_now % 64
+    if rem != 0:
+        out.extend(b"\xff" * ((64 - rem) * PAGE_TOTAL))
+
+    # Update header + data using next YAFFS2 sequence number (cleanly supports >1 page)
+    new_seq = SEQ_NUMBER + 1
+    hdr = bytearray(out[hdr_page * PAGE_TOTAL : hdr_page * PAGE_TOTAL + PAGE_DATA])
+    struct.pack_into("<I", hdr, 0x124, len(new_script))
+    hdr_oob = bytearray(PAGE_OOB)
+    struct.pack_into("<IIII", hdr_oob, 0, new_seq, init_sh_oid, 0, 0xFFFF)
+    out.extend(hdr)
+    out.extend(hdr_oob)
+
+    cid = 1
+    for off in range(0, len(new_script), PAGE_DATA):
+        piece = new_script[off : off + PAGE_DATA]
+        page = bytearray(b"\xff" * PAGE_DATA)
+        page[: len(piece)] = piece
+        oob = bytearray(PAGE_OOB)
+        struct.pack_into("<IIII", oob, 0, new_seq, init_sh_oid, cid, len(piece))
+        out.extend(page)
+        out.extend(oob)
+        cid += 1
+
+    print(f"Patched /system/etc/init.goldfish.sh ({orig_size} -> {len(new_script)} bytes, oid={init_sh_oid})")
+
+
+def inject_apk(src_img_path: str, apk_path: str, out_img_path: str, target_name: str, pin_holomarket: bool = True):
     img = open(src_img_path, "rb").read()
     if len(img) % PAGE_TOTAL != 0:
         raise RuntimeError(f"Unexpected YAFFS2 image size (not multiple of {PAGE_TOTAL}): {len(img)}")
 
     apk = open(apk_path, "rb").read()
-    app_oid, hdr, max_oid = find_app_dir_and_template(img)
+    app_oid, hdr, init_sh_oid, max_oid = find_app_dir_and_template(img)
     new_oid = max_oid + 1
 
     # Update object header: name (offset 10..265), mode=0100644 (0x10c), uid/gid=0, fileSize (0x124)
@@ -80,6 +179,9 @@ def inject_apk(src_img_path: str, apk_path: str, out_img_path: str, target_name:
         out.extend(page)
         out.extend(oob)
         chunk_id += 1
+
+    if pin_holomarket and init_sh_oid is not None:
+        patch_init_goldfish_sh(out, init_sh_oid, PIN_HOLOMARKET_HOOK)
 
     with open(out_img_path, "wb") as f:
         f.write(out)

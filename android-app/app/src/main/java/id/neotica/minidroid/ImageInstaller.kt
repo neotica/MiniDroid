@@ -11,8 +11,8 @@ object ImageInstaller {
     private const val PREFS = "minidroid_prefs"
     private const val KEY_SDCARD_MB = "sdcard_size_mb"
 
-    // Bump whenever system.img.z changes (v2 = Android 1.6 with built-in HoloMarket v1.5.2)
-    private const val ROM_VERSION = 2
+    // Bump whenever system.img.z changes (v3 = Android 1.6 with HoloMarket v1.5.3 + Home screen shortcut)
+    private const val ROM_VERSION = 3
 
     fun imagesDir(context: Context): File = File(context.filesDir, "images").apply { mkdirs() }
     fun keymapsDir(context: Context): File = File(context.filesDir, "keymaps").apply { mkdirs() }
